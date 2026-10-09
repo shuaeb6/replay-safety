@@ -53,21 +53,28 @@
  "rulesets": {
   "industrial": {
    "name": "Warehouse safety",
-   "summary": "Watch this camera for a person in the forklift lane, a person next to a forklift, or a person who stays still.",
+   "summary": "Factory rules: forklift lane, person next to a vehicle, blocked path, lingering, and crowding.",
    "rules": [
     {"id": "zone_entry", "params": {"dwell_seconds": 1}, "clause": "Site forklift-lane policy", "violation": "A person is inside the forklift lane."},
     {"id": "near_forklift", "params": {"min_score": 0.4}, "clause": "29 CFR 1910.178(m)(2)", "violation": "A person stands or walks next to a forklift."},
-    {"id": "lingering", "params": {"dwell_seconds": 3}, "clause": "Site dwell policy", "violation": "A person stayed in one place too long."}
-   ]
-  },
-  "hackathon": {
-   "name": "Hackathon violations",
-   "summary": "Watch this camera for the team rules: person next to a vehicle, blocked path, lingering, and crowding.",
-   "rules": [
     {"id": "near_vehicle", "name": "Person near a vehicle", "kind": "retrieval", "color": "#FF6B5B", "query": "a person standing or walking close to a vehicle, car, truck, or forklift", "params": {"min_score": 0.35}, "clause": "Site vehicle-distance policy", "violation": "A person is close to a vehicle."},
     {"id": "blocked_path", "name": "Blocked path", "kind": "retrieval", "color": "#C98A1C", "query": "boxes, pallets, or equipment blocking a walkway, aisle, door, or exit", "params": {"min_score": 0.35}, "clause": "29 CFR 1910.37(a)(3)", "violation": "Material blocks a walkway or exit."},
     {"id": "lingering", "params": {"dwell_seconds": 3}, "clause": "Site dwell policy", "violation": "A person stayed in one place too long."},
     {"id": "crowding", "params": {"max_people": 2, "min_seconds": 1}, "clause": "Site occupancy policy", "violation": "More people are in view than the limit."}
+   ]
+  },
+  "hackathon": {
+   "name": "Office rules",
+   "summary": "Office clips only: do-not-enter, fire alarm, office entry, pizza, restroom, running indoors, and a moved table.",
+   "rules": [
+    {"id": "do_not_enter", "name": "Do not enter", "kind": "retrieval", "color": "#FF6B5B", "query": "a person at a door marked do not enter", "params": {"min_score": 0.3}, "clause": "Office door policy", "violation": "A person is at a door marked do not enter."},
+    {"id": "fire_alarm", "name": "Fire alarm", "kind": "retrieval", "color": "#E23B2F", "query": "a person standing at or pulling a fire alarm", "params": {"min_score": 0.3}, "clause": "Office fire-alarm policy", "violation": "A person is at the fire alarm."},
+    {"id": "office_entry", "name": "Office entry", "kind": "retrieval", "color": "#C98A1C", "query": "a person entering an office through an office door", "params": {"min_score": 0.3}, "clause": "Office entry policy", "violation": "A person is entering an office."},
+    {"id": "pizza_lunchtime", "name": "Pizza at lunch", "kind": "retrieval", "color": "#E7A23A", "query": "people eating pizza together at a lunch table", "params": {"min_score": 0.3}, "clause": "Office food policy", "violation": "People are eating pizza at the lunch table."},
+    {"id": "pizza_other_tables", "name": "Pizza on other tables", "kind": "retrieval", "color": "#D4782A", "query": "pizza or food left on a work table that is not the lunch table", "params": {"min_score": 0.3}, "clause": "Office food policy", "violation": "Food is on a table that is not the lunch table."},
+    {"id": "restroom_entry", "name": "Restroom entry", "kind": "retrieval", "color": "#5CC8FF", "query": "a person entering or standing at a restroom door", "params": {"min_score": 0.3}, "clause": "Office restroom policy", "violation": "A person is at the restroom door."},
+    {"id": "running_indoors", "name": "Running indoors", "kind": "retrieval", "color": "#B69CFF", "query": "a person running indoors through an office or hallway", "params": {"min_score": 0.3}, "clause": "Office movement policy", "violation": "A person is running indoors."},
+    {"id": "table_moved", "name": "Table moved", "kind": "retrieval", "color": "#7FD1A7", "query": "a table that has been moved out of place in an office", "params": {"min_score": 0.3}, "clause": "Office furniture policy", "violation": "A table has been moved."}
    ]
   },
   "streets": {
@@ -89,10 +96,13 @@
    "Alert me if more than 2 people are in view for over a second."
   ],
   "hackathon": [
-   "Flag anyone who stands still in one spot for 3 seconds.",
-   "Alert me if more than 2 people are in view for over a second.",
-   "Show me every moment where someone is close to a vehicle.",
-   "Alert me when workers are not wearing hard hats."
+   "Show me a person at a door marked do not enter.",
+   "Show me a person at the fire alarm.",
+   "Show me a person entering an office.",
+   "Show me people eating pizza, or food left on a work table.",
+   "Show me a person at the restroom door.",
+   "Show me a person running indoors.",
+   "Show me a table that has been moved."
   ],
   "streets": [
    "Show me every moment where someone is close to a vehicle.",

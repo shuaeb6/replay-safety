@@ -42,6 +42,15 @@ class ValidateTests(unittest.TestCase):
 
 
 class RulesetTests(unittest.TestCase):
+    def test_hackathon_rules_match_office_clips_not_factory(self):
+        ids = [r["id"] for r in CATALOG["rulesets"]["hackathon"]["rules"]]
+        self.assertEqual(ids, [
+            "do_not_enter", "fire_alarm", "office_entry", "pizza_lunchtime",
+            "pizza_other_tables", "restroom_entry", "running_indoors", "table_moved",
+        ])
+        factory = {r["id"] for r in CATALOG["rulesets"]["industrial"]["rules"]}
+        self.assertTrue({"near_vehicle", "blocked_path", "lingering", "crowding"} <= factory)
+
     def test_every_footage_set_has_a_named_ruleset_with_rules(self):
         packs = CATALOG["rulesets"]
         for spec in main.SETS:
