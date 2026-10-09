@@ -1,4 +1,5 @@
 import {normaliseDetections, boxesAt, track, computeEvents, activeEvents, trackBoxAt} from './engine.js';
+import {matchFeeds} from './match.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
@@ -104,6 +105,7 @@ function ruleSpec(rule) {
     paramSpec: base.params,
     clause: rule.clause || '',
     violation: rule.violation || base.summary || '',
+    terms: rule.terms || [],
     evidence: base.evidence || 'VAST hybrid search over Cosmos captions.',
     summary: rule.violation || base.summary || '',
   };
@@ -138,12 +140,7 @@ function renderLayers(newIds = []) {
       ? `<span><span class="state">attached</span><br><button type="button" data-remove="${m.id}">Remove</button></span>` : '<span class="state">available</span>'}</li>`),
   ].join('');
   document.querySelectorAll('[data-remove]').forEach((b) => { b.onclick = () => detach(b.dataset.remove); });
-  $('beforeLabel').textContent = `Before · ${S.catalog.baseline.length} modules`;
-  $('beforeCount').textContent = String(S.catalog.baseline.length);
-  $('afterCount').textContent = String(n);
-  $('viewCompare').disabled = $('viewAfter').disabled = !S.attached.length;
-  $('afterLabel').textContent = `After · ${n} modules`;
-  $('laneButton').hidden = !S.attached.some((a) => a.id === 'zone_entry');
+  if ($('laneButton')) $('laneButton').hidden = !S.attached.some((a) => a.id === 'zone_entry');
 }
 
 /* ---------------- feeds, wall, detections ---------------- */
@@ -163,7 +160,7 @@ async function loadDetections(feed) {
 }
 
 function renderWall() {
-  const shown = S.feeds.slice(0, 4);
+  const shown = S.feeds;
   $('wall').innerHTML = shown.map((f, i) => `
     <button class="tile ${S.feed?.id === f.id ? 'selected' : ''}" type="button" data-feed="${i}" aria-pressed="${S.feed?.id === f.id}" aria-label="${esc(f.name)} ${esc(f.subtitle)}">
       <video muted loop playsinline autoplay preload="auto" src="${streamUrl(f.segments[0].source)}"></video>
@@ -171,7 +168,7 @@ function renderWall() {
       <span class="rec">REPLAY</span>
       ${flagCount(f) ? `<span class="flag">${flagCount(f)} flagged</span>` : ''}
       <span class="tile-meta"><strong>${esc(f.name)}</strong><small>${esc(f.subtitle)}</small></span>
-    </button>`).join('') || '<div class="empty">No indexed feeds were returned for this camera.</div>';
+    </button>`).join('') || `<div class="empty">${(S.allFeeds || []).length ? 'No clip in this set matches that violation.' : 'No indexed feeds were returned for this camera.'}</div>`;
   document.querySelectorAll('[data-feed]').forEach((b) => { b.onclick = () => selectFeed(S.feeds[Number(b.dataset.feed)]); });
 }
 
@@ -297,7 +294,6 @@ function detach(id) {
   S.attached = S.attached.filter((a) => a.id !== id);
   S.retrieval.delete(id);
   renderLayers();
-  setView(S.attached.length ? S.view : 'before');
   recomputeAll();
   notify(`${moduleSpec(id).name} removed`);
 }
@@ -421,21 +417,20 @@ function renderRulesets() {
   const pack = packFor(S.set);
   if (!box || !pack) { if (box) box.innerHTML = ''; return; }
   const attached = new Set(S.attached.map((a) => a.id));
-  const on = pack.rules.every((r) => attached.has(r.id));
   box.innerHTML = `<div class="pack">
       <h3>${esc(pack.name)}</h3>
       <p>${esc(pack.summary)}</p>
-      <button class="pack-run" type="button" id="runPack" aria-pressed="${on}">${on ? 'Watching · run again' : `Watch with ${esc(pack.name)}`}</button>
+      <button class="pack-run" type="button" id="runPack">Show all clips</button>
       <div class="pack-rules">${pack.rules.map((raw) => {
         const r = ruleSpec(raw);
         return `<button type="button" data-rule="${esc(r.id)}" class="${attached.has(r.id) ? 'on' : ''}"><strong>${esc(r.name)}</strong><small>${esc(r.clause || r.violation)}</small></button>`;
       }).join('')}</div>
     </div>`;
-  $('runPack').onclick = () => runRules(pack.rules.map(ruleSpec), pack.name);
+  $('runPack').onclick = () => showAllClips();
   box.querySelectorAll('[data-rule]').forEach((b) => {
     b.onclick = () => {
       const rule = pack.rules.map(ruleSpec).find((r) => r.id === b.dataset.rule);
-      if (rule) runRules([rule], rule.name);
+      if (rule) applyClipFilter(rule.name);
     };
   });
 }
@@ -654,44 +649,20 @@ function drawTiles() {
 /* ---------------- wipe ---------------- */
 
 function setWipe(x) {
+  if (!$('wipe')) return;
   S.wipe = Math.max(0, Math.min(1, x));
   const stage = $('stage');
   const r = contentRect(vid(), stage.clientWidth, stage.clientHeight);
   $('wipe').style.setProperty('--x', `${((r.x + r.w * S.wipe) / stage.clientWidth) * 100}%`);
 }
 
-function setView(view) {
-  if (!S.catalog) return;
-  if (!S.attached.length) view = 'before';
-  S.view = view;
-  for (const [id, v] of [['viewBefore', 'before'], ['viewCompare', 'compare'], ['viewAfter', 'after']]) $(id).setAttribute('aria-pressed', String(view === v));
-  S.wipeOn = view !== 'before';
-  $('wipe').hidden = !S.wipeOn;
-  $('wipe').classList.toggle('solo', view === 'after');
-  if (view === 'after') setWipe(0);
-  if (view === 'compare') setWipe(S.wipe > 0.02 && S.wipe < 0.98 ? S.wipe : 0.5);
-  const n = S.catalog.baseline.length, m = S.attached.length;
-  $('viewNote').innerHTML = !m ? 'Before: people and scene captions only. Attach a rule to compare.'
-    : view === 'before' ? `<b>Before</b>: ${n} modules. Nothing is flagged.`
-    : view === 'after' ? `<b>After</b>: ${n + m} modules, including your ${m} rule${m === 1 ? '' : 's'}.`
-    : `Drag the handle. <b>Left</b>: before (${n} modules). <b>Right</b>: after (${n + m} modules).`;
-}
+function setView() {}
 
-function sweepWipe() {
-  setView('compare');
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduce) { setWipe(0.5); return; }
-  const from = 1, to = 0.5, start = performance.now();
-  const step = (now) => {
-    const k = Math.min(1, (now - start) / 1100);
-    setWipe(from + (to - from) * (1 - Math.pow(1 - k, 3)));
-    if (k < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
-}
+function sweepWipe() {}
 
 (function bindWipe() {
   const handle = $('wipeHandle');
+  if (!handle) return;
   const move = (e) => {
     const stage = $('stage').getBoundingClientRect();
     const r = contentRect(vid(), stage.width, stage.height);
@@ -815,39 +786,36 @@ function stepHtml(state, text, note = '') {
   return `<li class="${state}"><span class="dot"></span><span>${esc(text)}</span><small>${esc(note)}</small></li>`;
 }
 
+function showAllClips() {
+  S.feeds = S.allFeeds || S.feeds;
+  $('requirement').value = '';
+  $('charCount').textContent = '0 / 400';
+  $('thread').innerHTML = '';
+  $('wallNote').textContent = `${S.feeds.length} clips in this set`;
+  renderWall();
+  if (S.feeds[0]) selectFeed(S.feeds[0]);
+}
+
+async function applyClipFilter(query) {
+  const text = query.trim();
+  if (!text) { showAllClips(); return; }
+  const rules = (packFor(S.set)?.rules || []).map(ruleSpec);
+  const found = matchFeeds(text, S.allFeeds || [], rules);
+  S.feeds = found.feeds;
+  const names = found.rules.map((rule) => rule.name).join(', ');
+  $('thread').innerHTML = `<div class="bubble">${esc(text)}</div><div class="reply">${S.feeds.length
+    ? `<div class="attached-note">${S.feeds.length} clip${S.feeds.length === 1 ? '' : 's'} · ${esc(names)}</div>`
+    : '<div class="error"><strong>No matching clip in this set.</strong> Try one of the violations listed above.</div>'}</div>`;
+  $('wallNote').textContent = S.feeds.length
+    ? `Showing ${S.feeds.length} of ${(S.allFeeds || []).length} clips · ${names}`
+    : 'No clip in this set matches that violation.';
+  renderWall();
+  if (S.feeds[0]) await selectFeed(S.feeds[0]);
+}
+
 async function submit(text) {
-  text = text.trim();
-  if (!text) { notify('Describe what Replay should watch for.'); return; }
-  const thread = $('thread');
-  thread.innerHTML = `<div class="bubble">${esc(text)}</div><div class="reply"><ul class="steps" id="steps">${stepHtml('run', 'Reading the requirement', 'W&B Inference')}</ul><div id="replyBody"></div></div>`;
-  $('sendButton').disabled = true;
-  let result;
-  try {
-    result = await post('api/compile', {text});
-  } catch (err) {
-    $('steps').innerHTML = stepHtml('fail', 'Reading the requirement', 'W&B Inference');
-    $('replyBody').innerHTML = `<div class="error"><strong>No modules were attached.</strong> ${esc(err.message)} Replay does not guess rules without the model.</div>`;
-    $('sendButton').disabled = false;
-    return;
-  }
-  $('sendButton').disabled = false;
-  const model = (result.model || '').split('/').pop();
-  $('steps').innerHTML = stepHtml('done', 'Read the requirement', `${model} · ${secs(result.ms)}`)
-    + stepHtml('done', `Matched ${result.modules.length} module${result.modules.length === 1 ? '' : 's'} from your library`, 'validated');
-  const cards = result.modules.map((mod) => {
-    const m = moduleSpec(mod.id);
-    const inputs = Object.entries(m.params).map(([k, p]) =>
-      `<label>${esc(p.label)} <span><input type="number" id="p-${m.id}-${k}" data-mod="${m.id}" data-param="${k}" min="${p.min}" max="${p.max}" step="${p.step}" value="${mod.params[k]}" required> ${esc(p.unit)}</span></label>`).join('');
-    return `<div class="mod-card" style="--c:${m.color}"><header><i></i><strong>${esc(m.name)}</strong><span class="kind">${esc(m.kind === 'retrieval' ? 'archive search' : 'computed')}</span></header>
-      ${mod.reason ? `<div class="quote">${esc(mod.reason)}</div>` : ''}${inputs}<div class="basis">${esc(m.evidence)}</div></div>`;
-  }).join('');
-  const unsupported = result.unsupported.map((u) => `<div class="unsupported"><strong>Not available: ${esc(u.topic)}</strong><span>${esc(u.why)}</span></div>`).join('');
-  const problems = result.problems?.length ? `<div class="basis" style="font-size:12px;color:var(--muted)">${result.problems.map(esc).join(' ')}</div>` : '';
-  const clarify = result.clarification ? `<div class="unsupported"><strong>Question</strong><span>${esc(result.clarification)}</span></div>` : '';
-  const none = !result.modules.length ? '<div class="error"><strong>Nothing to attach.</strong> No module in the library matches this requirement.</div>' : '';
-  const attach = result.modules.length ? `<button class="attach" type="button" id="attachButton">Attach ${result.modules.length} module${result.modules.length === 1 ? '' : 's'}</button>` : '';
-  $('replyBody').innerHTML = `<div class="mods">${cards}</div>${unsupported}${clarify}${none}${problems}${attach}`;
-  if (result.modules.length) $('attachButton').onclick = () => attach_(result.modules);
+  if (!text.trim()) { notify('Describe the violation to find.'); return; }
+  await applyClipFilter(text);
 }
 
 async function attach_(mods) {
@@ -947,6 +915,7 @@ async function loadCamera(cameraId) {
   $('emptyText').textContent = '';
   try {
     const res = await api(`api/feeds?camera_id=${encodeURIComponent(S.camera)}`);
+    S.allFeeds = res.feeds;
     S.feeds = res.feeds;
     const first = S.feeds[0];
     $('wallNote').textContent = first
@@ -1013,7 +982,7 @@ async function applySet(id) {
 
 $('setSelect').onchange = () => applySet($('setSelect').value);
 $('cameraSelect').onchange = () => loadCamera($('cameraSelect').value);
-document.querySelectorAll('[data-view]').forEach((b) => { b.onclick = () => setView(b.dataset.view); });$('playButton').onclick = () => setPlaying(!S.playing);
+$('playButton').onclick = () => setPlaying(!S.playing);
 $('scrub').addEventListener('input', (e) => { if (S.feed) seekFeed((Number(e.target.value) / 1000) * S.feed.duration); });
 $('aboutButton').onclick = () => $('about').showModal();
 
