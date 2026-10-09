@@ -58,6 +58,9 @@ for secret_key, source in wanted.items():
         missing.append(source)
     else:
         resolved[secret_key] = value
+# The public ingress hostname is only resolvable on the workshop VM.
+# Pods must call the video backend Service in this namespace.
+resolved["VSS_URL"] = "http://video-backend-service:8000"
 if missing:
     print("Leaving the existing secret in place. Missing: " + ", ".join(missing))
     sys.exit(0)
