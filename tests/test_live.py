@@ -41,6 +41,32 @@ class ValidateTests(unittest.TestCase):
             compiler.validate(["zone_entry"], CATALOG)
 
 
+class SetTests(unittest.TestCase):
+    def test_known_warehouse_cameras_are_industrial(self):
+        self.assertEqual(main.camera_set("sdg_warehouse_cam-2"), "industrial")
+        self.assertEqual(main.camera_set("smartspace_cam-1"), "industrial")
+
+    def test_corpus_road_cameras_are_streets(self):
+        self.assertEqual(main.camera_set("i24_cam-1"), "streets")
+        self.assertEqual(main.camera_set("neighborhood_cam-1"), "streets")
+
+    def test_unknown_cameras_are_hackathon(self):
+        self.assertEqual(main.camera_set("team10_lab_cam-1"), "hackathon")
+
+    def test_build_sets_keeps_empty_hackathon_and_lists_cameras(self):
+        cameras = [
+            {"id": "sdg_warehouse_cam-2", "segments": 10},
+            {"id": "i24_cam-1", "segments": 4},
+        ]
+        sets = {row["id"]: row for row in main.build_sets(cameras)}
+        self.assertEqual(sets["industrial"]["cameras"], ["sdg_warehouse_cam-2"])
+        self.assertEqual(sets["streets"]["cameras"], ["i24_cam-1"])
+        self.assertEqual(sets["hackathon"]["cameras"], [])
+        self.assertEqual(cameras[0]["set"], "industrial")
+        self.assertEqual(sets["industrial"]["default_camera"], "sdg_warehouse_cam-2")
+        self.assertIsNone(sets["hackathon"]["default_camera"])
+
+
 class FeedTests(unittest.TestCase):
     def test_view_names(self):
         self.assertEqual(main.view_name("x_run_7_seed_9.ceiling_04.rgb_chunk_0000.mp4"), ("Ceiling 04", "Scene 7"))

@@ -73,6 +73,36 @@ CAMERA_INFO = {
     "sf_streets_cam-5": ("SF street 5", "San Francisco", "street", False),
 }
 CAMERA_ORDER = list(CAMERA_INFO)
+SETS = (
+    {"id": "industrial", "label": "Industrial",
+     "description": "Warehouse aisle and indoor facility from the event corpus."},
+    {"id": "hackathon", "label": "Hackathon",
+     "description": "Team footage for the violation ruleset."},
+    {"id": "streets", "label": "Streets",
+     "description": "Highway, driving, and street cameras from the event corpus."},
+)
+
+
+def camera_set(camera_id):
+    info = CAMERA_INFO.get(camera_id)
+    if info and info[2] == "warehouse":
+        return "industrial"
+    if info:
+        return "streets"
+    return "hackathon"
+
+
+def build_sets(cameras):
+    by_id = {spec["id"]: [] for spec in SETS}
+    for camera in cameras:
+        sid = camera_set(camera["id"])
+        camera["set"] = sid
+        by_id[sid].append(camera["id"])
+    return [
+        {**spec, "cameras": by_id[spec["id"]], "default_camera": (by_id[spec["id"]] or [None])[0]}
+        for spec in SETS
+    ]
+
 STATIC = {
     "/": ("index.html", "text/html"),
     "/index.html": ("index.html", "text/html"),
@@ -275,7 +305,11 @@ class Archive:
             cameras.append({"id": camera_id, "name": name, "place": place, "tone": tone,
                             "synthetic": synthetic, "segments": counts.get(camera_id) or 0})
         overview = stats.get("overview") or {}
-        return {"cameras": cameras, "indexed_clips": overview.get("indexed_clips")}
+        return {
+            "cameras": cameras,
+            "indexed_clips": overview.get("indexed_clips"),
+            "sets": build_sets(cameras),
+        }
 
     def _explore_all(self):
         fetched_at, items = self._explore

@@ -25,7 +25,7 @@ const ICON = {
 };
 
 const S = {
-  status: null, catalog: null, camera: '',
+  status: null, catalog: null, sites: null, set: 'industrial', camera: '',
   feeds: [], feed: null, seg: 0, playing: true,
   det: new Map(), tracks: new Map(), yolo: false, captionsSeen: false,
   captions: new Map(),
@@ -763,16 +763,108 @@ async function attach_(mods) {
 $('ruleForm').addEventListener('submit', (e) => { e.preventDefault(); submit($('requirement').value); });
 $('requirement').addEventListener('input', () => { $('charCount').textContent = `${$('requirement').value.length} / 400`; });
 $('requirement').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit($('requirement').value); } });
-document.querySelectorAll('[data-prompt]').forEach((b) => {
-  b.onclick = () => {
-    const box = $('requirement');
-    box.value = b.dataset.prompt;
-    $('charCount').textContent = `${box.value.length} / 400`;
-    document.querySelectorAll('[data-prompt]').forEach((x) => x.classList.toggle('picked', x === b));
-    box.focus();
-    box.setSelectionRange(box.value.length, box.value.length);
-  };
-});
+function setSpec(id) {
+  return (S.sites?.sets || []).find((s) => s.id === id);
+}
+
+function camerasInSet(id) {
+  const ids = new Set(setSpec(id)?.cameras || []);
+  return (S.sites?.cameras || []).filter((c) => ids.has(c.id));
+}
+
+function fillSelect(el, items, value) {
+  el.innerHTML = items.map((item) =>
+    `<option value="${esc(item.id)}" ${item.id === value ? 'selected' : ''}>${esc(item.label)}</option>`).join('');
+  el.value = value;
+  el.disabled = items.length === 0;
+}
+
+function renderExamples() {
+  const prompts = S.catalog?.sets?.[S.set] || S.catalog?.sets?.industrial || [];
+  const box = $('examples');
+  box.innerHTML = '<span class="examples-head">Try a requirement · click to fill</span>'
+    + prompts.map((p) => `<button type="button" data-prompt="${esc(p)}">${esc(p)}</button>`).join('');
+  box.querySelectorAll('[data-prompt]').forEach((b) => {
+    b.onclick = () => {
+      const input = $('requirement');
+      input.value = b.dataset.prompt;
+      $('charCount').textContent = `${input.value.length} / 400`;
+      box.querySelectorAll('[data-prompt]').forEach((x) => x.classList.toggle('picked', x === b));
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    };
+  });
+}
+
+function renderFilters() {
+  const sets = (S.sites?.sets || []).map((s) => {
+    const n = s.cameras.length;
+    const extra = n ? `${n} camera${n === 1 ? '' : 's'}` : 'none yet';
+    return {id: s.id, label: `${s.label} · ${extra}`};
+  });
+  fillSelect($('setSelect'), sets, S.set);
+  const cams = camerasInSet(S.set).map((c) => ({
+    id: c.id,
+    label: `${c.name}${c.synthetic ? ' · synthetic' : ''}`,
+  }));
+  fillSelect($('cameraSelect'), cams, S.camera);
+}
+
+async function loadCamera(cameraId) {
+  S.camera = cameraId;
+  S.feed = null;
+  S.feeds = [];
+  S.det.clear();
+  S.tracks.clear();
+  S.events.clear();
+  S.retrieval.clear();
+  $('wall').innerHTML = '<div class="tile skeleton"></div>'.repeat(4);
+  $('emptyTitle').textContent = 'Loading the archive…';
+  $('emptyText').textContent = '';
+  try {
+    const res = await api(`api/feeds?camera_id=${encodeURIComponent(S.camera)}`);
+    S.feeds = res.feeds;
+    const first = S.feeds[0];
+    $('wallNote').textContent = first
+      ? `Showing ${Math.min(4, S.feeds.length)} of ${res.available} indexed videos · ${S.camera}${first.synthetic ? ' · synthetic footage' : ''}`
+      : 'No complete indexed videos for this camera yet.';
+    if (first?.location) $('siteName').textContent = first.location.replace(/^warehouse(\d+)$/i, 'Warehouse $1');
+    else $('siteName').textContent = setSpec(S.set)?.label || 'Indexed archive';
+  } catch (err) {
+    $('wall').innerHTML = `<div class="empty">The archive did not return feeds: ${esc(err.message)}</div>`;
+    $('emptyTitle').textContent = 'No feeds to replay';
+    $('emptyText').textContent = err.message;
+    $('wallNote').textContent = err.message;
+    return;
+  }
+  renderWall();
+  if (S.feeds.length) {
+    $('emptyTitle').textContent = 'Loading the replay…';
+    await selectFeed(S.feeds[0]);
+    S.feeds.slice(1, 6).forEach(loadDetections);
+  }
+}
+
+async function applySet(id) {
+  S.set = id;
+  const spec = setSpec(id);
+  S.camera = spec?.default_camera || camerasInSet(id)[0]?.id || '';
+  $('siteNote').textContent = spec?.description || 'Indexed archive';
+  renderFilters();
+  renderExamples();
+  if (!S.camera) {
+    S.feeds = [];
+    $('wall').innerHTML = '<div class="empty">No cameras in this set yet. Team uploads show here after ingest.</div>';
+    $('wallNote').textContent = spec?.description || 'No cameras in this set yet.';
+    $('emptyTitle').textContent = 'No cameras in this set yet';
+    $('emptyText').textContent = 'Hackathon footage appears here after the team uploads it to the archive.';
+    return;
+  }
+  await loadCamera(S.camera);
+}
+
+$('setSelect').onchange = () => applySet($('setSelect').value);
+$('cameraSelect').onchange = () => loadCamera($('cameraSelect').value);
 document.querySelectorAll('[data-view]').forEach((b) => { b.onclick = () => setView(b.dataset.view); });$('playButton').onclick = () => setPlaying(!S.playing);
 $('scrub').addEventListener('input', (e) => { if (S.feed) seekFeed((Number(e.target.value) / 1000) * S.feed.duration); });
 $('aboutButton').onclick = () => $('about').showModal();
@@ -788,10 +880,10 @@ async function boot() {
     $('emptyText').textContent = err.message;
     return;
   }
-  S.camera = S.status.default_camera;
   setMode();
   renderLayers();
   renderMoments();
+  renderExamples();
   $('devBanner').hidden = S.status.mode !== 'dev-fixture';
   if (!S.status.archive) {
     $('emptyTitle').textContent = 'The video archive is not connected';
@@ -800,28 +892,20 @@ async function boot() {
     refreshServices();
     return;
   }
-  $('wall').innerHTML = '<div class="tile skeleton"></div>'.repeat(4);
   try {
-    const res = await api(`api/feeds?camera_id=${encodeURIComponent(S.camera)}`);
-    S.feeds = res.feeds;
-    const first = S.feeds[0];
-    $('wallNote').textContent = first
-      ? `Showing ${Math.min(4, S.feeds.length)} of ${res.available} indexed videos · ${S.camera}${first.synthetic ? ' · synthetic footage' : ''}`
-      : 'No complete indexed videos for this camera yet.';
-    if (first?.location) $('siteName').textContent = first.location.replace(/^warehouse(\d+)$/i, 'Warehouse $1');
+    S.sites = await api('api/sites');
   } catch (err) {
-    $('wall').innerHTML = `<div class="empty">The archive did not return feeds: ${esc(err.message)}</div>`;
-    $('emptyTitle').textContent = 'No feeds to replay';
-    $('emptyText').textContent = err.message;
-    refreshServices();
-    return;
+    S.sites = {
+      cameras: [{id: S.status.default_camera, name: S.status.default_camera, synthetic: false, segments: 0}],
+      sets: [{id: 'industrial', label: 'Industrial', description: 'Warehouse and facility.', cameras: [S.status.default_camera], default_camera: S.status.default_camera}],
+    };
+    $('wallNote').textContent = `Camera list unavailable: ${err.message}`;
   }
-  renderWall();
-  if (S.feeds.length) {
-    $('emptyTitle').textContent = 'Loading the replay…';
-    await selectFeed(S.feeds[0]);
-    S.feeds.slice(1, 6).forEach(loadDetections);
-  }
+  const preferred = S.status.default_camera;
+  const fromDefault = S.sites.cameras.find((c) => c.id === preferred);
+  S.set = fromDefault?.set || 'industrial';
+  renderFilters();
+  await applySet(S.set);
   refreshServices();
   setInterval(refreshServices, 4000);
 }

@@ -31,6 +31,15 @@ def fake_source(name, n):
 class FixtureArchive:
     configured = True
 
+    def sites(self):
+        cameras = [
+            {"id": "sdg_warehouse_cam-2", "name": "Warehouse aisle", "place": "Warehouse 3 · synthetic",
+             "tone": "warehouse", "synthetic": True, "segments": 6},
+            {"id": "smartspace_cam-1", "name": "Indoor floor", "place": "Facility · synthetic",
+             "tone": "warehouse", "synthetic": True, "segments": 0},
+        ]
+        return {"cameras": cameras, "indexed_clips": 6, "sets": main.build_sets(cameras)}
+
     def feeds(self, camera_id, limit=6):
         feeds = []
         for i, name in enumerate(CLIPS):

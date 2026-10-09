@@ -50,6 +50,26 @@
    }
   }
  ],
+ "sets": {
+  "industrial": [
+   "Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift.",
+   "Tell me when a person stays inside the forklift lane for 2 seconds.",
+   "Show me every moment where someone is close to a forklift.",
+   "Flag anyone who stands still in one spot for 3 seconds.",
+   "Alert me if more than 2 people are in view for over a second."
+  ],
+  "hackathon": [
+   "Flag anyone who stands still in one spot for 3 seconds.",
+   "Alert me if more than 2 people are in view for over a second.",
+   "Show me every moment where someone is close to a vehicle.",
+   "Alert me when workers are not wearing hard hats."
+  ],
+  "streets": [
+   "Show me every moment where someone is close to a vehicle.",
+   "Flag anyone who stands still in one spot for 3 seconds.",
+   "Alert me if more than 2 people are in view for over a second."
+  ]
+ },
  "unsupported": [
   {"topic": "PPE such as hard hats, vests, or gloves", "why": "The detector only boxes people; it does not classify protective equipment, and an occluded helmet would be unknown, not missing."},
   {"topic": "vehicle speed or physical distance in metres", "why": "Measuring speed or distance needs calibrated camera geometry, which this archive does not provide."},

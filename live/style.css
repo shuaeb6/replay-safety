@@ -79,6 +79,9 @@ h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
 /* ---------- camera wall ---------- */
 .wall-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .wall-head h2 { font-size: 17px; letter-spacing: -.3px; }
+.filters { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.filter { display: grid; gap: 4px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.filter select { min-width: 180px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font: 500 13px var(--body); text-transform: none; letter-spacing: 0; }
 .running { display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 16px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); }
 .running-n { font: 800 34px/1 var(--display); letter-spacing: -1.5px; color: var(--forest); font-variant-numeric: tabular-nums; min-width: 1ch; text-align: center; transition: transform .35s cubic-bezier(.3, 1.6, .5, 1); }
 .running-n.bump { transform: scale(1.35); }
