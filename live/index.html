@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Replay — Safety workspace</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<aside class="rail">
+  <a class="brand" href="/" aria-label="Replay home">r<span>•</span></a>
+  <button class="rail-button active" title="Camera workspace" aria-label="Camera workspace" id="workspaceNav"></button>
+  <button class="rail-button" title="Evidence" aria-label="Open evidence" id="evidenceNav"></button>
+  <div class="rail-bottom"><span class="avatar">RS</span></div>
+</aside>
+<div class="shell">
+<header>
+  <div class="breadcrumb">Workspace <span>/</span> <strong>Indexed archive</strong></div>
+  <div class="header-right"><span class="demo-dot"></span> Search over indexed video <button class="text-button" id="aboutButton">About this view ↗</button></div>
+</header>
+<main>
+  <div class="page-heading">
+    <div>
+      <div class="eyebrow">SAFETY WORKSPACE</div>
+      <h1>A clearer view of the floor.</h1>
+      <p>Choose a camera. Describe what to watch. Replay the moments the archive already indexed.</p>
+    </div>
+    <button class="button secondary" id="resetButton">Reset workspace</button>
+  </div>
+  <div class="workspace">
+    <section class="monitor">
+      <div class="section-heading"><h2>Your cameras <span class="count" id="cameraCount">…</span></h2><span class="subtle" id="archiveNote">Loading the archive</span></div>
+      <div id="cameraGrid" class="camera-grid"></div>
+      <div class="viewer">
+        <div class="viewer-heading">
+          <div><h2 id="viewerName">Select a camera</h2><span class="subtle" id="viewerLocation"></span></div>
+          <div class="segmented" role="group" aria-label="Search mode">
+            <button id="scenarioButton" class="selected" aria-pressed="true">This search</button>
+            <button id="referenceButton" aria-pressed="false">Quieter clip</button>
+          </div>
+        </div>
+        <div class="video-stage">
+          <video id="mainVideo" playsinline preload="metadata"></video>
+          <div class="video-top"><span class="video-badge">INDEXED REPLAY</span><span id="analysisBadge" class="video-badge">No moment selected</span></div>
+          <svg id="overlay" viewBox="0 0 1920 1080" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <div class="event-toast" id="eventToast" hidden><span class="alert-indicator"></span><div><strong id="eventTitle"></strong><small id="eventMeta">Indexed caption · detector boxes when available</small></div></div>
+          <div class="empty-video" id="videoError" hidden>This clip could not be played.</div>
+        </div>
+        <div class="playback">
+          <button id="playButton" class="icon-button" aria-label="Play footage"></button>
+          <span id="timeLabel" class="time">0:00 / 0:00</span>
+          <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Video position">
+          <button id="speedButton" class="speed">1×</button>
+          <button id="restartButton" class="icon-button" aria-label="Restart footage"></button>
+        </div>
+        <div class="viewer-foot"><span><i class="small-dot"></i><span id="viewerStatus">Choose a camera and describe what to watch.</span></span><button id="overlayToggle" class="text-button" aria-pressed="true">Boxes on</button></div>
+      </div>
+      <section class="evidence-section" id="evidenceSection">
+        <div class="section-heading"><h2>Evidence <span id="eventCount" class="count">0</span></h2><button class="text-button" id="clearEvidence">Clear</button></div>
+        <div id="evidenceList"></div>
+      </section>
+    </section>
+    <aside class="rule-panel">
+      <div class="panel-title"><span class="spark">✧</span><h2>What should we watch?</h2></div>
+      <p class="panel-description">Replay searches the indexed archive for this camera. It does not certify compliance.</p>
+      <form id="ruleForm">
+        <label class="sr-only" for="requirement">Safety requirement</label>
+        <textarea id="requirement" rows="4" placeholder="Forklift near a person in a warehouse aisle…"></textarea>
+        <button class="button primary" type="submit" id="searchButton">Search the archive <span>↗</span></button>
+      </form>
+      <div class="examples">
+        <span class="eyebrow">TRY A REQUIREMENT</span>
+        <button type="button" data-prompt="forklift near a person in a warehouse aisle" data-camera="sdg_warehouse_cam-2">Forklift near a person <span>↗</span></button>
+        <button type="button" data-prompt="person walking in a warehouse aisle or marked walkway" data-camera="sdg_warehouse_cam-2">Person in the aisle <span>↗</span></button>
+        <button type="button" data-prompt="person close to a moving vehicle" data-camera="">Person near a vehicle <span>↗</span></button>
+      </div>
+      <div id="suggestion" aria-live="polite"></div>
+      <div class="honesty"><span>ⓘ</span><p><strong>Indexed search</strong>Moments come from captions and object detections already stored for these clips. A match score is similarity, not a risk rating. Boxes are detector output for the playing segment. A quieter clip is another search, not a safety clearance.</p></div>
+    </aside>
+  </div>
+  <footer>Built for the moments that matter.<span>Captions and detections from the team video archive</span></footer>
+</main>
+</div>
+<div class="notification" id="notification" role="status" hidden></div>
+<dialog id="aboutDialog">
+  <button id="closeAbout" class="close" aria-label="Close">×</button>
+  <div class="eyebrow">ABOUT THIS VIEW</div>
+  <h2>Indexed footage. Visible sources.</h2>
+  <p>Replay asks the team archive for moments that match a written requirement, then plays the matching segment. Captions are model-written descriptions stored with each clip. Boxes, when shown, are object-detector output for that segment.</p>
+  <p>This is not a live camera feed, not an OSHA determination, and not proof that a scene is safe. Similarity is how closely a clip matched the words, not a calibrated probability.</p>
+  <p>The local factory demo in this repository is a separate authored preview. This view does not use those example intervals.</p>
+</dialog>
+<script src="client.js"></script>
+</body>
+</html>
