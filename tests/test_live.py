@@ -75,6 +75,21 @@ class FeedTests(unittest.TestCase):
         self.assertFalse(main.safe_source("https://evil.example/a.mp4", ""))
 
 
+class LaneModelTests(unittest.TestCase):
+    def test_keeps_configured_model_the_server_serves(self):
+        self.assertEqual(lane.choose_model("a", ["b", "a"]), "a")
+
+    def test_replaces_configured_model_the_server_does_not_serve(self):
+        self.assertEqual(lane.choose_model("nvidia/cosmos3-reason", ["nvidia/cosmos3-nano-reasoner"]), "nvidia/cosmos3-nano-reasoner")
+
+    def test_uses_first_served_model_when_none_configured(self):
+        self.assertEqual(lane.choose_model(None, ["x", "y"]), "x")
+
+    def test_keeps_configured_model_when_server_list_is_unavailable(self):
+        self.assertEqual(lane.choose_model("a", []), "a")
+        self.assertEqual(lane.choose_model(None, []), lane.FALLBACK_MODEL)
+
+
 class LaneTests(unittest.TestCase):
     def test_parses_reasoning_output_and_thousand_scale(self):
         pts, reason = lane.parse_lane('<think>x</think> {"found": true, "polygon": [[400,500],[900,500],[950,950],[350,950]], "reason": "aisle"}')

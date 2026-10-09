@@ -24,6 +24,16 @@ PROMPT = (
 )
 
 
+FALLBACK_MODEL = "nvidia/cosmos3-reason"
+
+
+def choose_model(configured, served):
+    """Use the configured model only if the server serves it; a stale name returns 404."""
+    if configured and (not served or configured in served):
+        return configured
+    return served[0] if served else FALLBACK_MODEL
+
+
 def polygon_area(points):
     return abs(sum(x1 * y2 - x2 * y1 for (x1, y1), (x2, y2) in zip(points, points[1:] + points[:1]))) / 2
 
@@ -61,6 +71,7 @@ class LaneProposer:
         self.url = (url or DEFAULT_URL).rstrip("/")
         self.token = token
         self.model = model
+        self._resolved = False
 
     @property
     def configured(self):
@@ -72,14 +83,18 @@ class LaneProposer:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
 
+    def _served_models(self):
+        try:
+            req = urllib.request.Request(f"{self.url}/v1/models", headers=self._headers())
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return [m["id"] for m in json.load(r)["data"]]
+        except Exception:
+            return []
+
     def _model(self):
-        if not self.model:
-            try:
-                req = urllib.request.Request(f"{self.url}/v1/models", headers=self._headers())
-                with urllib.request.urlopen(req, timeout=10) as r:
-                    self.model = json.load(r)["data"][0]["id"]
-            except Exception:
-                self.model = "nvidia/cosmos3-reason"
+        if not self._resolved:
+            self.model = choose_model(self.model, self._served_models())
+            self._resolved = True
         return self.model
 
     def propose(self, image_data_url):
