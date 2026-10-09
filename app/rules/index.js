@@ -27,8 +27,15 @@ export {
 
 export {
   compileRequirement,
+  compileRequirementAsync,
   interpret,
   applyThreshold,
 } from './compiler.js';
+
+export {
+  compileRemote,
+  normalizeWorkshopCompile,
+  WORKSHOP_TO_DEMO,
+} from './remote.js';
 
 export { evaluate, evidenceKey } from './evaluator.js';
