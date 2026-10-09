@@ -36,6 +36,19 @@ Never print env values, tokens, or passwords. List variable names only if needed
 
 Paste both outputs back to Claude.
 
+## Prompt 1b — Re-test W&B Inference (after the user-agent fix)
+
+The first probe got Cloudflare `error code: 1010` from W&B because Python's default user agent is blocked. The probe now sends its own user agent.
+
+```text
+git -C ~/replay-safety pull --ff-only   (if history was rewritten, use the resync commands at the end of this file instead)
+cd ~/replay-safety && python3 tools/workshop_probe.py --skip-vss
+Show me the full model id list. Then pick the strongest instruction-tuned model from that list that supports JSON output
+(prefer a Llama 3.3 70B / Qwen / DeepSeek / gpt-oss style instruct model) and run:
+python3 tools/workshop_probe.py --skip-vss --model <that id>
+Show both outputs. Do not print secrets.
+```
+
 ## Prompt 2 — Data test drive for the use case
 
 ```text
@@ -81,3 +94,12 @@ Custom prompt: "<prompt Claude provides>". Show me the confirmation summary befo
 - Probe or smoke-test output (already sanitized).
 - Exact error text and the command that produced it.
 - Never paste tokens, passwords, keys, or `/config` contents. Segment URIs, camera IDs, and model IDs are fine.
+
+## Resync the VM after a history rewrite
+
+The factory MP4s were removed from Git history, so `git pull` fails with "divergent branches". The VM has no tracked edits; `.workshop/` is ignored and is kept.
+
+```bash
+git -C ~/replay-safety fetch origin
+git -C ~/replay-safety reset --hard origin/workshop-mode
+```

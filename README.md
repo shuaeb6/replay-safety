@@ -19,11 +19,11 @@ This is a functional UI demo, not a connected AI safety system. `app/rules.js` c
 
 Replace the interpreter with a validated model-produced rule specification and the event evaluator with actual timestamped inference to connect a model service. Keep the capability checks, visibility/uncertainty handling, and clear source labeling. The current walkway polygon is illustrative, not calibrated, and does not drive a real tracker.
 
-Source attribution and footage provenance: `demo-footage/README.md`. Original videos remain unmodified.
+Source attribution and footage provenance: `demo-footage/README.md`. Original videos remain unmodified and are downloaded from their source with `python3 tools/fetch_footage.py` rather than stored in this repository.
 
 ## Sharing and collaboration
 
-Clone this repository, install Python 3 (and Node 20+ for `npm` commands/tests), then run `python3 server.py` or `npm start`. No `npm install` is necessary. The bundled footage makes the initial clone approximately 104 MB plus application assets. Each friend runs their own local server; the localhost URL is not a shareable hosted site.
+Clone this repository, install Python 3 (and Node 20+ for `npm` commands/tests), then run `python3 server.py` or `npm start`. No `npm install` is necessary. The factory clips (~104 MB) are not stored in Git; `python3 tools/fetch_footage.py` downloads them from the original Mendeley Data source and verifies their checksums. Each friend runs their own local server; the localhost URL is not a shareable hosted site.
 
 For continued implementation with Claude or another coding assistant, use [CLAUDE_HANDOFF.md](CLAUDE_HANDOFF.md). The software has no project-wide license selected yet; the third-party footage retains the attribution and license documented in [the footage notes](demo-footage/README.md).
 
@@ -35,6 +35,7 @@ First time (macOS/Linux):
 ```bash
 git clone https://github.com/shuaeb6/replay-safety.git
 cd replay-safety
+python3 tools/fetch_footage.py
 python3 server.py
 ```
 

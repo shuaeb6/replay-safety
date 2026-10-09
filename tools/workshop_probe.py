@@ -58,7 +58,8 @@ class Client:
 
     def call(self, method, url, headers=None, body=None, raw=False):
         data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(url, data=data, method=method, headers={'Content-Type': 'application/json', **(headers or {})})
+        # Cloudflare in front of W&B Inference rejects urllib's default User-Agent (error 1010).
+        req = urllib.request.Request(url, data=data, method=method, headers={'Content-Type': 'application/json', 'User-Agent': 'replay-workshop-probe/1.0', **(headers or {})})
         t = time.perf_counter()
         try:
             with urllib.request.urlopen(req, timeout=60, context=self.ctx) as r:
