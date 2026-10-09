@@ -2,6 +2,15 @@
 
 Start with `npm start`, then open http://127.0.0.1:8765. Uses Python 3 and a modern browser; no npm dependencies or API keys required. `npm test` runs the rule-engine checks.
 
+### Chat → rules (keyword + optional W&B)
+
+The requirement box compiles text through `app/rules` (`compileRequirementAsync`, mode `auto`):
+
+1. `POST /api/compile` uses the workshop catalog (`live/catalog.json`) and W&B Inference when credentials are in the environment or `/config/*.config`.
+2. Valid workshop modules that map to demo cameras (`zone_entry` → walkway, `near_forklift` → tall load) become attachable Replay suggestions labeled **W&B COMPILE**.
+3. If W&B is down or unconfigured, the UI falls back to local keyword matching so offline clones keep working.
+4. Full archive evaluation (YOLO zones, search evidence) lives on the **live board** at http://127.0.0.1:8765/live/ (or `python3 live/main.py` on port 8080).
+
 ## Demo flow
 
 1. Select a camera.
@@ -15,9 +24,7 @@ Camera attachments persist in this browser. Reset clears them. Videos are served
 
 ## Actual implementation boundary
 
-This is a functional UI demo, not a connected AI safety system. `app/rules.js` contains local keyword matching and explicit manually authored example intervals. There is no LLM, object detector, live camera ingestion, OSHA compliance certification, or automatic retraining. All demo analysis is labeled. PPE and blocked-route prompts return an unsupported-capability message.
-
-Replace the interpreter with a validated model-produced rule specification and the event evaluator with actual timestamped inference to connect a model service. Keep the capability checks, visibility/uncertainty handling, and clear source labeling. The current walkway polygon is illustrative, not calibrated, and does not drive a real tracker.
+Offline Replay still uses authored demo intervals for evidence on the three factory clips. W&B compile only selects allowlisted modules; it does not invent detectors. YOLO/search evidence runs on the live board, not in the offline player. There is no OSHA compliance certification. PPE and similar unsupported topics return an explicit error. The walkway polygon in the demo player is illustrative, not calibrated.
 
 Source attribution and footage provenance: `demo-footage/README.md`. Original videos remain unmodified and are downloaded from their source with `python3 tools/fetch_footage.py` rather than stored in this repository.
 
