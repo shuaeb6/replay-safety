@@ -15,3 +15,5 @@ venv/
 # Local tool configuration
 .codex/
 .claude/settings.local.json
+# Workshop probe output (may contain team segment IDs)
+.workshop/

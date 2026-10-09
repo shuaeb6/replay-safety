@@ -26,3 +26,27 @@ Source attribution and footage provenance: `demo-footage/README.md`. Original vi
 Clone this repository, install Python 3 (and Node 20+ for `npm` commands/tests), then run `python3 server.py` or `npm start`. No `npm install` is necessary. The bundled footage makes the initial clone approximately 104 MB plus application assets. Each friend runs their own local server; the localhost URL is not a shareable hosted site.
 
 For continued implementation with Claude or another coding assistant, use [CLAUDE_HANDOFF.md](CLAUDE_HANDOFF.md). The software has no project-wide license selected yet; the third-party footage retains the attribution and license documented in [the footage notes](demo-footage/README.md).
+
+
+## Run after cloning or pulling
+
+First time (macOS/Linux):
+
+```bash
+git clone https://github.com/shuaeb6/replay-safety.git
+cd replay-safety
+python3 server.py
+```
+
+After updates, stop the running server with Ctrl+C, then from the repository:
+
+```bash
+git pull --ff-only
+python3 server.py
+```
+
+On Windows, use `py -3 server.py` instead of `python3 server.py`. Install Python 3 if neither command exists. Open http://127.0.0.1:8765 and keep the terminal running. Refresh the browser after pulling. If the port is in use, stop the earlier Replay server before restarting. If Git reports conflicting local changes, preserve/commit them before pulling; do not discard them blindly.
+
+No dependencies or credentials are required for this offline demo. Node 20+ is optional for `npm test`; no `npm install` is needed. Sponsor-integrated workshop mode is not implemented yet and will require the event environment.
+
+See [Hackathon readiness](HACKATHON_READINESS.md) for the verified gaps and [Claude handoff](CLAUDE_HANDOFF.md) for the revised implementation priority.

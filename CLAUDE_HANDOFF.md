@@ -2,6 +2,27 @@
 
 Use the following as your task brief. Inspect the repository before making changes; this describes the baseline and may become outdated.
 
+## Priority update: sponsor integration (reviewed October 9, 2026)
+
+Read `HACKATHON_READINESS.md` first. This update takes precedence over the earlier optimization order. The current app is NOT sponsor-integrated. Preserve its UI, but prioritize an actual sponsor-backed evidence path before more visual polish.
+
+Implementation proposal:
+
+1. Keep an explicit offline-demo mode for friends cloning this public repository. Add a separate workshop mode; missing workshop access must not silently activate authored events.
+2. In the assigned workshop environment, inspect the current official starter repository and its API skills. Discover the actual configuration and request/response schemas; do not invent endpoints or copy credentials into this public repository. Use the available environment securely without printing its values.
+3. Build a server-side VSS adapter for camera metadata, search, video segments, reasoning text, and detector results. Populate the camera selector from actual available metadata. Test one returned playable segment before broad integration.
+4. Build a server-side Weights & Biases inference adapter for requirement-to-rule compilation. Validate structured output against supported modules, parameters, and camera capabilities. Use the event-provided service configuration and available model; do not assume a model name. Claude may assist with development, but replacing the application's runtime reasoning with an unrelated API does not satisfy our sponsor-integration objective.
+5. Connect each displayed evidence card to a real returned segment ID, timestamps, and observable reasoning. Draw only boxes actually provided by detections. Distinguish retrieval scores from calibrated safety confidence. Archive analysis must not be called a real-time camera alert.
+6. Select a small warehouse subset if present in the team's live index. Aim for a defensible worker/vehicle or aisle-obstruction review workflow. Adapt the modules to observations the returned footage supports; do not force hardhat or open-panel examples onto unrelated footage.
+7. If captions lack required detail, offer a separate analysis preparation step with progress/error states. A newly attached rule may query existing indexed evidence quickly; a re-analysis operation is not instantaneous. Keep these two actions distinct in the UI.
+8. Add optional Weave traces for actual requirement compilation and evidence retrieval, with sensitive values redacted. This is our observability proposal, not a verified mandatory judging condition.
+9. Follow the workshop deployment workflow for the integrated app and test its deployed base path, static assets, video playback, and backend routing. The current Python server is only a local development server.
+10. Provide a small sponsor-evidence report: actual service calls made, segment IDs used, trace links if available, measured latency, and deployment URL. Never claim sponsor usage based on logos or planned integrations.
+
+Do not upload our downloaded factory footage to the event pipeline based solely on its CC BY license. Preserve it as a local prototype asset. If the user supplies explicit organizer permission for an exception, record its scope and follow that scope. Do not copy workshop footage into the public repo without separate redistribution rights.
+
+Acceptance gate: one real requirement -> W&B-backed structured rule -> VAST search -> source clip plus Cosmos reasoning/detection evidence -> working replay, with an explicit indication of analysis mode. A backend smoke test must establish real service access; mocks alone do not meet this gate. If workshop access is unavailable, complete adapters and offline tests and report the integration as unverified.
+
 ## Product and user intent
 
 Continue improving Replay, a clean CCTV safety-monitoring demo built for a real-time video agents hackathon. The desired interaction is:
@@ -74,7 +95,7 @@ The original desired capability set was PPE, restricted-zone entry, and blocked 
 
 Video alone cannot establish forklift load weight, actual worker authorization, energized machinery, or legal OSHA compliance. For real detection, use observable events and uncertainty states. Calibrated physical distance/speed needs camera geometry. A helmet hidden by occlusion is unknown, not missing.
 
-## Recommended implementation priorities
+## Additional implementation priorities (after the sponsor integration gate)
 
 1. Run the existing app and tests; inspect actual code and video behavior. Identify bugs before rewriting architecture. Keep the working baseline.
 2. Improve usability and accessibility: readable contrast, mobile layout, clear focus, input validation, and uncluttered error/loading states. Make camera and active-rule context obvious.
