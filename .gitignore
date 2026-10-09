@@ -1,0 +1,17 @@
+# Local credentials and environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# Dependencies and generated files
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
+*.log
+# Local tool configuration
+.codex/
+.claude/settings.local.json
