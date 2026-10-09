@@ -41,6 +41,74 @@ class ValidateTests(unittest.TestCase):
             compiler.validate(["zone_entry"], CATALOG)
 
 
+class RulesetTests(unittest.TestCase):
+    def test_every_footage_set_has_a_named_ruleset_with_rules(self):
+        packs = CATALOG["rulesets"]
+        for spec in main.SETS:
+            pack = packs[spec["id"]]
+            self.assertTrue(pack["name"].strip(), spec["id"])
+            self.assertTrue(pack["rules"], spec["id"])
+
+    def test_expand_rule_fills_catalog_module_fields(self):
+        rule = main.expand_rule({"id": "near_forklift", "params": {"min_score": 0.5},
+                                 "clause": "29 CFR 1910.178(m)(2)", "violation": "Person next to a forklift."}, CATALOG)
+        self.assertEqual(rule["kind"], "retrieval")
+        self.assertEqual(rule["query"], "a person standing or walking close to a forklift")
+        self.assertEqual(rule["params"]["min_score"], 0.5)
+        self.assertEqual(rule["clause"], "29 CFR 1910.178(m)(2)")
+
+    def test_expand_rule_keeps_caption_search_without_a_catalog_module(self):
+        rule = main.expand_rule({
+            "id": "blocked_path", "name": "Blocked path", "kind": "retrieval",
+            "query": "boxes blocking an exit", "color": "#C98A1C",
+            "clause": "29 CFR 1910.37(a)(3)", "violation": "Material blocks an exit.",
+        }, CATALOG)
+        self.assertEqual(rule["kind"], "retrieval")
+        self.assertEqual(rule["query"], "boxes blocking an exit")
+
+    def test_resolve_search_uses_catalog_module_query(self):
+        query, score = main.resolve_search({"module": "near_forklift", "params": {"min_score": 0.45}}, CATALOG)
+        self.assertEqual(query, "a person standing or walking close to a forklift")
+        self.assertEqual(score, 0.45)
+
+    def test_resolve_search_accepts_a_short_caption_query(self):
+        query, score = main.resolve_search({"query": "boxes blocking an aisle or exit"}, CATALOG)
+        self.assertIn("boxes", query)
+        self.assertEqual(score, 0.35)
+
+    def test_resolve_search_rejects_empty_or_huge_queries(self):
+        with self.assertRaises(ValueError):
+            main.resolve_search({"query": "no"}, CATALOG)
+        with self.assertRaises(ValueError):
+            main.resolve_search({"query": "x" * 201}, CATALOG)
+
+
+class SetTests(unittest.TestCase):
+    def test_known_warehouse_cameras_are_industrial(self):
+        self.assertEqual(main.camera_set("sdg_warehouse_cam-2"), "industrial")
+        self.assertEqual(main.camera_set("smartspace_cam-1"), "industrial")
+
+    def test_corpus_road_cameras_are_streets(self):
+        self.assertEqual(main.camera_set("i24_cam-1"), "streets")
+        self.assertEqual(main.camera_set("neighborhood_cam-1"), "streets")
+
+    def test_unknown_cameras_are_hackathon(self):
+        self.assertEqual(main.camera_set("team10_lab_cam-1"), "hackathon")
+
+    def test_build_sets_keeps_empty_hackathon_and_lists_cameras(self):
+        cameras = [
+            {"id": "sdg_warehouse_cam-2", "segments": 10},
+            {"id": "i24_cam-1", "segments": 4},
+        ]
+        sets = {row["id"]: row for row in main.build_sets(cameras)}
+        self.assertEqual(sets["industrial"]["cameras"], ["sdg_warehouse_cam-2"])
+        self.assertEqual(sets["streets"]["cameras"], ["i24_cam-1"])
+        self.assertEqual(sets["hackathon"]["cameras"], [])
+        self.assertEqual(cameras[0]["set"], "industrial")
+        self.assertEqual(sets["industrial"]["default_camera"], "sdg_warehouse_cam-2")
+        self.assertIsNone(sets["hackathon"]["default_camera"])
+
+
 class FeedTests(unittest.TestCase):
     def test_view_names(self):
         self.assertEqual(main.view_name("x_run_7_seed_9.ceiling_04.rgb_chunk_0000.mp4"), ("Ceiling 04", "Scene 7"))

@@ -73,6 +73,75 @@ CAMERA_INFO = {
     "sf_streets_cam-5": ("SF street 5", "San Francisco", "street", False),
 }
 CAMERA_ORDER = list(CAMERA_INFO)
+SETS = (
+    {"id": "industrial", "label": "Industrial",
+     "description": "Warehouse aisle and indoor facility from the event corpus."},
+    {"id": "hackathon", "label": "Hackathon",
+     "description": "Team footage for the violation ruleset."},
+    {"id": "streets", "label": "Streets",
+     "description": "Highway, driving, and street cameras from the event corpus."},
+)
+
+
+def camera_set(camera_id):
+    info = CAMERA_INFO.get(camera_id)
+    if info and info[2] == "warehouse":
+        return "industrial"
+    if info:
+        return "streets"
+    return "hackathon"
+
+
+def expand_rule(rule, catalog):
+    """Fill a ruleset row from the catalog module of the same id, when one exists."""
+    base = next((m for m in catalog["modules"] if m["id"] == rule["id"]), {})
+    params = {key: spec["default"] for key, spec in (base.get("params") or {}).items()}
+    params.update(rule.get("params") or {})
+    out = {
+        "id": rule["id"],
+        "name": rule.get("name") or base.get("name") or rule["id"],
+        "kind": rule.get("kind") or base.get("kind"),
+        "color": rule.get("color") or base.get("color") or "#FF6B5B",
+        "query": rule.get("query") or base.get("query") or "",
+        "params": params,
+        "clause": rule.get("clause") or "",
+        "violation": rule.get("violation") or base.get("summary") or "",
+        "evidence": base.get("evidence") or "VAST hybrid search over Cosmos captions.",
+    }
+    if not out["kind"]:
+        raise ValueError(f"Rule {rule['id']} has no kind.")
+    return out
+
+
+def resolve_search(body, catalog):
+    """Return (query, min_score) for an archive caption search."""
+    module = next((m for m in catalog["modules"] if m["id"] == body.get("module")), None)
+    if module and module.get("kind") == "retrieval":
+        spec = module["params"]["min_score"]
+        score = (body.get("params") or {}).get("min_score", spec["default"])
+        if isinstance(score, bool) or not isinstance(score, (int, float)) or not spec["min"] <= score <= spec["max"]:
+            raise ValueError(f"Minimum match score must be between {spec['min']} and {spec['max']}.")
+        return module["query"], float(score)
+    query = " ".join(str(body.get("query") or "").split())
+    if not 8 <= len(query) <= 200:
+        raise ValueError("Send a catalog retrieval module, or a search phrase of 8 to 200 characters.")
+    score = (body.get("params") or {}).get("min_score", 0.35)
+    if isinstance(score, bool) or not isinstance(score, (int, float)) or not 0.2 <= score <= 0.9:
+        raise ValueError("Minimum match score must be between 0.2 and 0.9.")
+    return query, float(score)
+
+
+def build_sets(cameras):
+    by_id = {spec["id"]: [] for spec in SETS}
+    for camera in cameras:
+        sid = camera_set(camera["id"])
+        camera["set"] = sid
+        by_id[sid].append(camera["id"])
+    return [
+        {**spec, "cameras": by_id[spec["id"]], "default_camera": (by_id[spec["id"]] or [None])[0]}
+        for spec in SETS
+    ]
+
 STATIC = {
     "/": ("index.html", "text/html"),
     "/index.html": ("index.html", "text/html"),
@@ -275,7 +344,11 @@ class Archive:
             cameras.append({"id": camera_id, "name": name, "place": place, "tone": tone,
                             "synthetic": synthetic, "segments": counts.get(camera_id) or 0})
         overview = stats.get("overview") or {}
-        return {"cameras": cameras, "indexed_clips": overview.get("indexed_clips")}
+        return {
+            "cameras": cameras,
+            "indexed_clips": overview.get("indexed_clips"),
+            "sets": build_sets(cameras),
+        }
 
     def _explore_all(self):
         fetched_at, items = self._explore
@@ -464,17 +537,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._guard(lambda: self._compile(text))
         elif parsed.path == "/api/evidence":
-            module = next((m for m in CATALOG["modules"] if m["id"] == body.get("module")), None)
             camera_id = str(body.get("camera_id") or DEFAULT_CAMERA)
-            if not module or module["kind"] != "retrieval":
-                self._json(400, {"error": "That module does not search the archive."})
+            try:
+                query, score = resolve_search(body, CATALOG)
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
                 return
-            score = (body.get("params") or {}).get("min_score", module["params"]["min_score"]["default"])
-            spec = module["params"]["min_score"]
-            if isinstance(score, bool) or not isinstance(score, (int, float)) or not spec["min"] <= score <= spec["max"]:
-                self._json(400, {"error": f"Minimum match score must be between {spec['min']} and {spec['max']}."})
-                return
-            self._guard(lambda: self._json(200, ARCHIVE.evidence(module, {"min_score": score}, camera_id)))
+            self._guard(lambda: self._json(200, ARCHIVE.evidence({"query": query}, {"min_score": score}, camera_id)))
         else:
             self._json(404, {"error": "Not found."})
 

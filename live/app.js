@@ -25,7 +25,7 @@ const ICON = {
 };
 
 const S = {
-  status: null, catalog: null, camera: '',
+  status: null, catalog: null, sites: null, set: 'industrial', camera: '',
   feeds: [], feed: null, seg: 0, playing: true,
   det: new Map(), tracks: new Map(), yolo: false, captionsSeen: false,
   captions: new Map(),
@@ -87,7 +87,38 @@ async function refreshServices() {
 
 /* ---------------- module library + running layers ---------------- */
 
-const moduleSpec = (id) => S.catalog.modules.find((m) => m.id === id);
+function packFor(setId) {
+  return S.catalog?.rulesets?.[setId];
+}
+
+function ruleSpec(rule) {
+  const base = S.catalog.modules.find((m) => m.id === rule.id) || {};
+  const defaults = Object.fromEntries(Object.entries(base.params || {}).map(([k, p]) => [k, p.default]));
+  return {
+    id: rule.id,
+    name: rule.name || base.name || rule.id,
+    kind: rule.kind || base.kind,
+    color: rule.color || base.color || '#FF6B5B',
+    query: rule.query || base.query || '',
+    params: {...defaults, ...(rule.params || {})},
+    paramSpec: base.params,
+    clause: rule.clause || '',
+    violation: rule.violation || base.summary || '',
+    evidence: base.evidence || 'VAST hybrid search over Cosmos captions.',
+    summary: rule.violation || base.summary || '',
+  };
+}
+
+function moduleSpec(id) {
+  const attached = S.attached.find((a) => a.id === id);
+  if (attached?.spec) {
+    const catalog = S.catalog.modules.find((m) => m.id === id);
+    return {...attached.spec, params: catalog?.params || attached.spec.paramSpec};
+  }
+  const fromPack = Object.values(S.catalog.rulesets || {}).flatMap((p) => p.rules).find((r) => r.id === id);
+  if (fromPack) return ruleSpec(fromPack);
+  return S.catalog.modules.find((m) => m.id === id);
+}
 const colorOf = (id) => (moduleSpec(id) || S.catalog.baseline.find((b) => b.id === id) || {}).color || '#fff';
 
 function renderLayers(newIds = []) {
@@ -258,6 +289,7 @@ function recomputeAll() {
   S.feeds.forEach(recompute);
   renderLanes();
   renderMoments();
+  renderFindings();
   renderWall();
 }
 
@@ -310,16 +342,23 @@ function allMoments() {
   for (const feed of S.feeds) {
     for (const e of S.events.get(feed.id) || []) {
       const m = moduleSpec(e.module);
+      const spec = S.attached.find((a) => a.id === e.module)?.spec;
       out.push({key: `${e.module}:${feed.id}:${e.trigger.toFixed(2)}`, module: m, feed, at: e.trigger, start: e.start, end: e.end,
-        why: `Person ${m.kind === 'zone' ? 'inside the lane' : m.kind === 'dwell' ? 'stayed in place' : 'count over the limit'} for ${(e.end - e.start).toFixed(1)} s.`,
+        clause: spec?.clause || '',
+        why: spec?.violation || `Person ${m.kind === 'zone' ? 'inside the lane' : m.kind === 'dwell' ? 'stayed in place' : 'count over the limit'} for ${(e.end - e.start).toFixed(1)} s.`,
+        detail: `Person ${m.kind === 'zone' ? 'inside the lane' : m.kind === 'dwell' ? 'stayed in place' : 'count over the limit'} for ${(e.end - e.start).toFixed(1)} s.`,
         basis: 'Computed from YOLO11 person boxes'});
     }
   }
   for (const [id, list] of S.retrieval) {
     const m = moduleSpec(id);
+    const spec = S.attached.find((a) => a.id === id)?.spec;
     for (const x of list) {
       out.push({key: `${id}:${x.source}`, module: m, feed: x.feed, at: x.start, start: x.start, end: x.end, source: x.source,
-        why: x.caption, basis: `VAST match ${x.score.toFixed(2)} · relevance, not confidence`});
+        clause: spec?.clause || '',
+        why: spec?.violation || x.caption,
+        detail: x.caption,
+        basis: `VAST match ${x.score.toFixed(2)} · caption search, not a compliance finding`});
     }
   }
   return out;
@@ -338,20 +377,104 @@ function renderMoments() {
       <span class="body">
         <span class="mod"><i></i>${esc(m.module.name)}</span>
         <span class="where">${esc(m.feed.name)}${m.feed.subtitle ? ` · ${esc(m.feed.subtitle)}` : ''} · ${fmt(m.start)}–${fmt(m.end)}</span>
-        <span class="why">${esc(m.why || '')}</span>
-        <span class="basis">${esc(m.basis)}</span>
+        <span class="why">${esc(m.why || '')}${m.detail && m.detail !== m.why ? ` ${esc(m.detail)}` : ''}</span>
+        <span class="basis">${esc(m.clause ? `${m.clause} · ${m.basis}` : m.basis)}</span>
       </span>
     </button>`).join('')
     : `<div class="empty">${S.attached.length ? 'No moments matched yet. Draw a lane, lower a threshold, or play other cameras.' : 'Describe a rule on the right. Matching moments from the archive appear here with their evidence.'}</div>`;
   document.querySelectorAll('[data-moment]').forEach((b) => {
+    b.onclick = () => openMoment(list[Number(b.dataset.moment)]);
+  });
+}
+
+function openMoment(m) {
+  if (!m) return;
+  if (S.feed?.id === m.feed.id) seekFeed(Math.max(0, m.at - 0.3));
+  else selectFeed(m.feed, Math.max(0, m.at - 0.3));
+  setPlaying(true);
+  $('stage').scrollIntoView({behavior: 'smooth', block: 'center'});
+}
+
+function renderFindings() {
+  const box = $('findings');
+  if (!box) return;
+  const list = allMoments();
+  if (!list.length) {
+    box.innerHTML = S.attached.length
+      ? '<p class="sub">No violation on this camera yet. Play other feeds, or wait for the archive search.</p>'
+      : '';
+    return;
+  }
+  box.innerHTML = `<h3>Violations <span class="count">${list.length}</span></h3>`
+    + list.map((m, i) => `<button class="finding" type="button" data-finding="${i}" style="--c:${m.module.color}">
+        <strong>${esc(m.module.name)}</strong>
+        <span class="meta">${esc(m.clause || 'Indexed match')} · ${esc(m.feed.name)} · ${fmt(m.at)}</span>
+        <span class="why">${esc(m.why || '')}${m.detail && m.detail !== m.why ? ` ${esc(m.detail)}` : ''}</span>
+      </button>`).join('');
+  box.querySelectorAll('[data-finding]').forEach((b) => {
+    b.onclick = () => openMoment(list[Number(b.dataset.finding)]);
+  });
+}
+
+function renderRulesets() {
+  const box = $('rulesets');
+  const pack = packFor(S.set);
+  if (!box || !pack) { if (box) box.innerHTML = ''; return; }
+  const attached = new Set(S.attached.map((a) => a.id));
+  const on = pack.rules.every((r) => attached.has(r.id));
+  box.innerHTML = `<div class="pack">
+      <h3>${esc(pack.name)}</h3>
+      <p>${esc(pack.summary)}</p>
+      <button class="pack-run" type="button" id="runPack" aria-pressed="${on}">${on ? 'Watching · run again' : `Watch with ${esc(pack.name)}`}</button>
+      <div class="pack-rules">${pack.rules.map((raw) => {
+        const r = ruleSpec(raw);
+        return `<button type="button" data-rule="${esc(r.id)}" class="${attached.has(r.id) ? 'on' : ''}"><strong>${esc(r.name)}</strong><small>${esc(r.clause || r.violation)}</small></button>`;
+      }).join('')}</div>
+    </div>`;
+  $('runPack').onclick = () => runRules(pack.rules.map(ruleSpec), pack.name);
+  box.querySelectorAll('[data-rule]').forEach((b) => {
     b.onclick = () => {
-      const m = list[Number(b.dataset.moment)];
-      if (S.feed?.id === m.feed.id) seekFeed(Math.max(0, m.at - 0.3));
-      else selectFeed(m.feed, Math.max(0, m.at - 0.3));
-      setPlaying(true);
-      $('stage').scrollIntoView({behavior: 'smooth', block: 'center'});
+      const rule = pack.rules.map(ruleSpec).find((r) => r.id === b.dataset.rule);
+      if (rule) runRules([rule], rule.name);
     };
   });
+}
+
+function evidenceBody(spec, cameraId) {
+  const catalog = S.catalog.modules.find((m) => m.id === spec.id);
+  if (catalog?.kind === 'retrieval') return {module: spec.id, params: spec.params, camera_id: cameraId};
+  return {query: spec.query, params: spec.params, camera_id: cameraId};
+}
+
+async function runRules(rules, label) {
+  if (!S.camera) { notify('Pick a camera in this set first.'); return; }
+  const thread = $('thread');
+  thread.innerHTML = `<div class="bubble">${esc(label)}</div><div class="reply"><ul class="steps" id="steps">${stepHtml('run', `Attaching ${rules.length} rule${rules.length === 1 ? '' : 's'}`, 'ruleset')}</ul><div id="replyBody"></div></div>`;
+  const chosen = rules.map((r) => ({id: r.id, params: r.params, spec: r}));
+  S.attached = [...S.attached.filter((a) => !chosen.some((c) => c.id === a.id)), ...chosen];
+  renderLayers(chosen.map((c) => c.id));
+  renderRulesets();
+  recomputeAll();
+  setView('after');
+  $('steps').innerHTML = stepHtml('done', `Attached ${rules.length} rule${rules.length === 1 ? '' : 's'}`, 'ruleset');
+  if (chosen.some((c) => c.id === 'zone_entry')) await proposeLanes();
+  for (const c of chosen.filter((c) => moduleSpec(c.id)?.kind === 'retrieval')) {
+    const m = moduleSpec(c.id);
+    const li = addStep('run', `Searching captions for "${m.name}"`, 'VAST VSS');
+    try {
+      const res = await post('api/evidence', evidenceBody(m, S.camera));
+      S.retrieval.set(c.id, res.moments);
+      if (li) li.outerHTML = stepHtml('done', `${res.moments.length} matching segment${res.moments.length === 1 ? '' : 's'}`, `VAST · ${secs(res.ms)}`);
+      recomputeAll();
+    } catch (err) {
+      if (li) li.outerHTML = stepHtml('fail', err.message, 'VAST VSS');
+    }
+  }
+  const n = allMoments().length;
+  $('replyBody').innerHTML = n
+    ? `<div class="attached-note">${n} possible violation${n === 1 ? '' : 's'} on this camera. Open a row to play that segment.</div>`
+    : '<div class="unsupported"><strong>No match on this camera.</strong><span>The captions and person boxes did not match these rules. Try another camera in the set.</span></div>';
+  refreshServices();
 }
 
 function captureThumb(key) {
@@ -364,6 +487,7 @@ function captureThumb(key) {
     c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
     S.thumbs.set(key, c.toDataURL('image/jpeg', 0.75));
     renderMoments();
+    renderFindings();
   } catch { /* cross-origin frames cannot be captured; keep the placeholder */ }
 }
 
@@ -604,7 +728,7 @@ function finishDrawing(save) {
     S.zones[S.feed.id] = {points: pts, by: 'manual'};
     store.set('replay-zones', Object.fromEntries(Object.entries(S.zones).filter(([, z]) => z.by === 'manual')));
     recompute(S.feed);
-    renderLanes(); renderMoments(); renderWall();
+    renderLanes(); renderMoments(); renderFindings(); renderWall();
     notify(`Lane saved for ${S.feed.name}. Events are computed from the person boxes.`);
   }
   setPlaying(true);
@@ -667,7 +791,7 @@ async function proposeLane(feed, video) {
     }
   } finally {
     S.laneBusy.delete(feed.id);
-    renderLanes(); renderMoments(); renderWall();
+    renderLanes(); renderMoments(); renderFindings(); renderWall();
     refreshServices();
   }
 }
@@ -763,16 +887,132 @@ async function attach_(mods) {
 $('ruleForm').addEventListener('submit', (e) => { e.preventDefault(); submit($('requirement').value); });
 $('requirement').addEventListener('input', () => { $('charCount').textContent = `${$('requirement').value.length} / 400`; });
 $('requirement').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit($('requirement').value); } });
-document.querySelectorAll('[data-prompt]').forEach((b) => {
-  b.onclick = () => {
-    const box = $('requirement');
-    box.value = b.dataset.prompt;
-    $('charCount').textContent = `${box.value.length} / 400`;
-    document.querySelectorAll('[data-prompt]').forEach((x) => x.classList.toggle('picked', x === b));
-    box.focus();
-    box.setSelectionRange(box.value.length, box.value.length);
-  };
-});
+function setSpec(id) {
+  return (S.sites?.sets || []).find((s) => s.id === id);
+}
+
+function camerasInSet(id) {
+  const ids = new Set(setSpec(id)?.cameras || []);
+  return (S.sites?.cameras || []).filter((c) => ids.has(c.id));
+}
+
+function fillSelect(el, items, value) {
+  el.innerHTML = items.map((item) =>
+    `<option value="${esc(item.id)}" ${item.id === value ? 'selected' : ''}>${esc(item.label)}</option>`).join('');
+  el.value = value;
+  el.disabled = items.length === 0;
+}
+
+function renderExamples() {
+  const prompts = S.catalog?.sets?.[S.set] || S.catalog?.sets?.industrial || [];
+  const box = $('examples');
+  box.innerHTML = '<span class="examples-head">Try a requirement · click to fill</span>'
+    + prompts.map((p) => `<button type="button" data-prompt="${esc(p)}">${esc(p)}</button>`).join('');
+  box.querySelectorAll('[data-prompt]').forEach((b) => {
+    b.onclick = () => {
+      const input = $('requirement');
+      input.value = b.dataset.prompt;
+      $('charCount').textContent = `${input.value.length} / 400`;
+      box.querySelectorAll('[data-prompt]').forEach((x) => x.classList.toggle('picked', x === b));
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    };
+  });
+}
+
+function renderFilters() {
+  const sets = (S.sites?.sets || []).map((s) => {
+    const n = s.cameras.length;
+    const extra = n ? `${n} camera${n === 1 ? '' : 's'}` : 'none yet';
+    return {id: s.id, label: `${s.label} · ${extra}`};
+  });
+  fillSelect($('setSelect'), sets, S.set);
+  const cams = camerasInSet(S.set).map((c) => ({
+    id: c.id,
+    label: `${c.name}${c.synthetic ? ' · synthetic' : ''}`,
+  }));
+  fillSelect($('cameraSelect'), cams, S.camera);
+}
+
+async function loadCamera(cameraId) {
+  S.camera = cameraId;
+  S.feed = null;
+  S.feeds = [];
+  S.det.clear();
+  S.tracks.clear();
+  S.events.clear();
+  S.retrieval.clear();
+  $('wall').innerHTML = '<div class="tile skeleton"></div>'.repeat(4);
+  $('emptyTitle').textContent = 'Loading the archive…';
+  $('emptyText').textContent = '';
+  try {
+    const res = await api(`api/feeds?camera_id=${encodeURIComponent(S.camera)}`);
+    S.feeds = res.feeds;
+    const first = S.feeds[0];
+    $('wallNote').textContent = first
+      ? `Showing ${Math.min(4, S.feeds.length)} of ${res.available} indexed videos · ${S.camera}${first.synthetic ? ' · synthetic footage' : ''}`
+      : 'No complete indexed videos for this camera yet.';
+    if (first?.location) $('siteName').textContent = first.location.replace(/^warehouse(\d+)$/i, 'Warehouse $1');
+    else $('siteName').textContent = setSpec(S.set)?.label || 'Indexed archive';
+  } catch (err) {
+    $('wall').innerHTML = `<div class="empty">The archive did not return feeds: ${esc(err.message)}</div>`;
+    $('emptyTitle').textContent = 'No feeds to replay';
+    $('emptyText').textContent = err.message;
+    $('wallNote').textContent = err.message;
+    return;
+  }
+  renderWall();
+  if (S.feeds.length) {
+    $('emptyTitle').textContent = 'Loading the replay…';
+    await selectFeed(S.feeds[0]);
+    S.feeds.slice(1, 6).forEach(loadDetections);
+  }
+  await refreshRetrieval();
+}
+
+async function refreshRetrieval() {
+  const retrieval = S.attached.filter((a) => moduleSpec(a.id)?.kind === 'retrieval');
+  if (!retrieval.length || !S.camera) { recomputeAll(); return; }
+  for (const c of retrieval) {
+    try {
+      const res = await post('api/evidence', evidenceBody(moduleSpec(c.id), S.camera));
+      S.retrieval.set(c.id, res.moments);
+    } catch {
+      S.retrieval.set(c.id, []);
+    }
+  }
+  recomputeAll();
+}
+
+async function applySet(id) {
+  if (S.set !== id) {
+    S.attached = [];
+    S.retrieval.clear();
+    S.events.clear();
+    $('thread').innerHTML = '';
+    renderLayers();
+  }
+  S.set = id;
+  const spec = setSpec(id);
+  S.camera = spec?.default_camera || camerasInSet(id)[0]?.id || '';
+  $('siteNote').textContent = spec?.description || 'Indexed archive';
+  renderFilters();
+  renderExamples();
+  renderRulesets();
+  renderFindings();
+  if (!S.camera) {
+    S.feeds = [];
+    $('wall').innerHTML = '<div class="empty">No cameras in this set yet. Team uploads show here after ingest.</div>';
+    $('wallNote').textContent = spec?.description || 'No cameras in this set yet.';
+    $('emptyTitle').textContent = 'No cameras in this set yet';
+    $('emptyText').textContent = 'Hackathon footage appears here after the team uploads it to the archive.';
+    return;
+  }
+  await loadCamera(S.camera);
+}
+
+$('setSelect').onchange = () => applySet($('setSelect').value);
+$('cameraSelect').onchange = () => loadCamera($('cameraSelect').value);
 document.querySelectorAll('[data-view]').forEach((b) => { b.onclick = () => setView(b.dataset.view); });$('playButton').onclick = () => setPlaying(!S.playing);
 $('scrub').addEventListener('input', (e) => { if (S.feed) seekFeed((Number(e.target.value) / 1000) * S.feed.duration); });
 $('aboutButton').onclick = () => $('about').showModal();
@@ -788,10 +1028,12 @@ async function boot() {
     $('emptyText').textContent = err.message;
     return;
   }
-  S.camera = S.status.default_camera;
   setMode();
   renderLayers();
   renderMoments();
+  renderFindings();
+  renderExamples();
+  renderRulesets();
   $('devBanner').hidden = S.status.mode !== 'dev-fixture';
   if (!S.status.archive) {
     $('emptyTitle').textContent = 'The video archive is not connected';
@@ -800,28 +1042,20 @@ async function boot() {
     refreshServices();
     return;
   }
-  $('wall').innerHTML = '<div class="tile skeleton"></div>'.repeat(4);
   try {
-    const res = await api(`api/feeds?camera_id=${encodeURIComponent(S.camera)}`);
-    S.feeds = res.feeds;
-    const first = S.feeds[0];
-    $('wallNote').textContent = first
-      ? `Showing ${Math.min(4, S.feeds.length)} of ${res.available} indexed videos · ${S.camera}${first.synthetic ? ' · synthetic footage' : ''}`
-      : 'No complete indexed videos for this camera yet.';
-    if (first?.location) $('siteName').textContent = first.location.replace(/^warehouse(\d+)$/i, 'Warehouse $1');
+    S.sites = await api('api/sites');
   } catch (err) {
-    $('wall').innerHTML = `<div class="empty">The archive did not return feeds: ${esc(err.message)}</div>`;
-    $('emptyTitle').textContent = 'No feeds to replay';
-    $('emptyText').textContent = err.message;
-    refreshServices();
-    return;
+    S.sites = {
+      cameras: [{id: S.status.default_camera, name: S.status.default_camera, synthetic: false, segments: 0}],
+      sets: [{id: 'industrial', label: 'Industrial', description: 'Warehouse and facility.', cameras: [S.status.default_camera], default_camera: S.status.default_camera}],
+    };
+    $('wallNote').textContent = `Camera list unavailable: ${err.message}`;
   }
-  renderWall();
-  if (S.feeds.length) {
-    $('emptyTitle').textContent = 'Loading the replay…';
-    await selectFeed(S.feeds[0]);
-    S.feeds.slice(1, 6).forEach(loadDetections);
-  }
+  const preferred = S.status.default_camera;
+  const fromDefault = S.sites.cameras.find((c) => c.id === preferred);
+  S.set = fromDefault?.set || 'industrial';
+  renderFilters();
+  await applySet(S.set);
   refreshServices();
   setInterval(refreshServices, 4000);
 }

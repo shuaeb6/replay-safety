@@ -32,6 +32,14 @@
       <div>
         <h2>Cameras</h2>
         <p class="sub" id="wallNote">Loading indexed feeds…</p>
+        <div class="filters">
+          <label class="filter">Set
+            <select id="setSelect" aria-label="Footage set"></select>
+          </label>
+          <label class="filter">Camera
+            <select id="cameraSelect" aria-label="Camera"></select>
+          </label>
+        </div>
       </div>
       <div class="running" aria-live="polite">
         <span class="running-n" id="runningCount">2</span>
@@ -97,8 +105,10 @@
   <aside class="panel" aria-label="Rule assistant">
     <div class="panel-head">
       <h1>What should Replay watch?</h1>
-      <p>Describe the rule in your own words. Replay picks modules from your library and checks them against the archive.</p>
+      <p>Click the ruleset for this set of cameras. Replay searches the archive and lists each violation here, with the segment and a short description. You can also type a rule.</p>
     </div>
+    <div id="rulesets"></div>
+    <div class="findings" id="findings" aria-live="polite"></div>
     <form id="ruleForm" class="composer">
       <label class="sr" for="requirement">Safety requirement</label>
       <textarea id="requirement" rows="3" maxlength="400" placeholder="Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift."></textarea>
@@ -110,13 +120,6 @@
     <div class="thread" id="thread" aria-live="polite"></div>
     <div class="examples" id="examples">
       <span class="examples-head">Try a requirement · click to fill</span>
-      <button type="button" data-prompt="Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift.">Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift.</button>
-      <button type="button" data-prompt="Tell me when a person stays inside the forklift lane for 2 seconds.">Tell me when a person stays inside the forklift lane for 2 seconds.</button>
-      <button type="button" data-prompt="Show me every moment where someone is close to a forklift.">Show me every moment where someone is close to a forklift.</button>
-      <button type="button" data-prompt="Flag anyone who stands still in one spot for 3 seconds.">Flag anyone who stands still in one spot for 3 seconds.</button>
-      <button type="button" data-prompt="Alert me if more than 2 people are in view for over a second.">Alert me if more than 2 people are in view for over a second.</button>
-      <button type="button" data-prompt="Watch the forklift lane, flag anyone lingering for 3 seconds, and warn me when the area gets crowded.">Watch the forklift lane, flag anyone lingering for 3 seconds, and warn me when the area gets crowded.</button>
-      <button type="button" data-prompt="Alert me when workers are not wearing hard hats.">Alert me when workers are not wearing hard hats.</button>
     </div>
     <div class="library">
       <h3>Module library</h3>
@@ -128,7 +131,7 @@
 <dialog id="about">
   <form method="dialog"><button class="close" aria-label="Close">×</button></form>
   <h2>About the data</h2>
-  <p><strong>Footage.</strong> Indexed clips from the team's VAST archive. The warehouse and facility feeds are rendered (synthetic) scenes from the event corpus. Replay plays recorded segments; it is not a live camera.</p>
+  <p><strong>Footage.</strong> Indexed clips from the team's VAST archive. Use the Set menu: Industrial is warehouse and indoor facility clips from the event corpus (rendered scenes). Hackathon is team footage for the violation ruleset. Streets is highway and street cameras. Replay plays recorded segments; it is not a live camera.</p>
   <p><strong>Always running.</strong> People: YOLO11 boxes recorded at ingest for every frame. Scene captions: the description Cosmos Reason wrote for each 5-second segment.</p>
   <p><strong>Your rules.</strong> W&amp;B Inference maps your words to modules in the library; the server rejects anything outside it. Cosmos Reason proposes the forklift lane from a camera frame. Lane, lingering, and crowding rules are then computed in your browser from the real person boxes. "Near a forklift" is a VAST hybrid search over captions. Its score ranks relevance; it is not a safety confidence.</p>
   <p><strong>Limits.</strong> The detector does not box forklifts, so forklift rules rely on captions. Positions are in image space, not calibrated metres. Flagged moments are for human review, not compliance findings.</p>
