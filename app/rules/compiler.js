@@ -24,6 +24,7 @@ const DURATION =
 
 /**
  * Compile plain-language text into an allowlisted rule, or return { error }.
+ * Sync path: keyword only. Use compileRequirementAsync for W&B / auto.
  * @param {string} text
  * @param {{ mode?: 'keyword' }} [options]
  */
@@ -32,10 +33,45 @@ export function compileRequirement(text, options = {}) {
   if (mode !== 'keyword') {
     return {
       error:
-        'Only the local keyword compiler is available in this build. Workshop LLM compilation is not wired yet.',
+        'Use compileRequirementAsync for wandb/auto modes. Sync compile supports keyword only.',
     };
   }
   return compileKeyword(text);
+}
+
+/**
+ * Keyword always available offline. Mode `wandb` hits /api/compile.
+ * Mode `auto` tries W&B then falls back to keyword on transport/config failure.
+ * @param {string} text
+ * @param {{ mode?: 'keyword'|'wandb'|'auto', url?: string }} [options]
+ */
+export async function compileRequirementAsync(text, options = {}) {
+  const mode = options.mode || 'auto';
+  if (mode === 'keyword') {
+    return compileKeyword(text);
+  }
+
+  const { compileRemote } = await import('./remote.js');
+  const remote = await compileRemote(text, { url: options.url });
+
+  if (mode === 'wandb') {
+    return remote;
+  }
+
+  // auto: fall back to keyword when the remote compiler is down or misconfigured
+  if (
+    remote.error &&
+    /unreachable|not configured|502|failed \(\d+\)|non-JSON|empty response/i.test(remote.error)
+  ) {
+    const local = compileKeyword(text);
+    if (!local.error) {
+      return { ...local, source: 'keyword', fallbackFrom: 'wandb' };
+    }
+  }
+  if (!remote.error) return remote;
+  // Prefer a successful keyword match over a soft remote "nothing matched"
+  const local = compileKeyword(text);
+  return local.error ? remote : local;
 }
 
 /** Backward-compatible alias used by the UI. */
