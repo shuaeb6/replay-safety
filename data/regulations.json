@@ -14,6 +14,11 @@
     "warehouse": {"label": "Warehouse", "description": "Warehouse, loading dock, and material handling."},
     "construction": {"label": "Construction", "description": "Construction site covered by 29 CFR 1926."}
   },
+  "modules": {
+    "zone": {"label": "Walkway watch", "note": "Site walkway policy. No clause requires people to stay on a marked route."},
+    "load": {"label": "Load visibility", "note": "Flags a tall load. The camera cannot see where the driver looks."},
+    "panel": {"label": "Panel watch", "note": "Flags an open panel. The camera cannot show that parts are live."}
+  },
   "not_visible": [
     {"pack": "OSHA", "clause": "1910.132(d)", "topic": "PPE hazard assessment", "reason": "Written certification. A camera cannot see it."},
     {"pack": "OSHA", "clause": "1910.132(f)", "topic": "PPE training", "reason": "Training record. A camera cannot see it."},
@@ -94,7 +99,7 @@
 
     {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.146(c)(2)", "topic": "Confined spaces", "settings": ["general-industry"], "requirement": "Post danger signs, or use an equal method, to show each permit-required confined space and its danger.", "cue": "Open tank, vessel, or manhole with no sign."},
 
-    {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.212(a)(1)", "topic": "Machine guarding", "settings": ["general-industry", "pharma"], "requirement": "Guard the machine area against hazards such as the point of operation, nip points, rotating parts, flying chips, and sparks.", "cue": "Guard removed or open on a running machine."},
+    {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.212(a)(1)", "topic": "Machine guarding", "settings": ["general-industry", "pharma"], "module": "panel", "requirement": "Guard the machine area against hazards such as the point of operation, nip points, rotating parts, flying chips, and sparks.", "cue": "Guard removed or open on a running machine."},
     {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.212(a)(3)(ii)", "topic": "Machine guarding", "settings": ["general-industry", "pharma"], "requirement": "Guard the point of operation if it can injure a worker.", "cue": "Hands at the point of operation with no guard."},
 
     {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.242(a)", "topic": "Hand and power tools", "settings": ["general-industry", "pharma", "warehouse"], "requirement": "Keep tools and equipment in a safe condition.", "cue": "Damaged tool, taped handle, or frayed cord in use."},
@@ -107,8 +112,8 @@
 
     {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.303(b)(7)(i)", "topic": "Electrical", "settings": ["general-industry", "chem-lab", "pharma", "warehouse"], "requirement": "Close unused openings in boxes, cabinets, and equipment cases.", "cue": "Open knockout or gap in an electrical box."},
     {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.303(g)(1)(ii)", "topic": "Electrical", "settings": ["general-industry", "chem-lab", "pharma", "warehouse"], "requirement": "Do not use the working space around electrical equipment for storage.", "cue": "Boxes or equipment in front of an electrical panel."},
-    {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.303(g)(2)", "topic": "Electrical", "settings": ["general-industry", "chem-lab", "pharma", "warehouse"], "requirement": "Guard live parts of 50 volts or more against accidental contact.", "cue": "Open panel with exposed live parts."},
-    {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.305(b)(2)", "topic": "Electrical", "settings": ["general-industry", "chem-lab", "pharma", "warehouse"], "requirement": "Fit covers on pull boxes, junction boxes, and fittings.", "cue": "Junction box with no cover."},
+    {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.303(g)(2)", "topic": "Electrical", "settings": ["general-industry", "chem-lab", "pharma", "warehouse"], "module": "panel", "requirement": "Guard live parts of 50 volts or more against accidental contact.", "cue": "Open panel with exposed live parts."},
+    {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.305(b)(2)", "topic": "Electrical", "settings": ["general-industry", "chem-lab", "pharma", "warehouse"], "module": "panel", "requirement": "Fit covers on pull boxes, junction boxes, and fittings.", "cue": "Junction box with no cover."},
     {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.305(g)(1)(iv)", "topic": "Electrical", "settings": ["general-industry", "chem-lab", "pharma", "warehouse"], "requirement": "Do not use flexible cords as fixed wiring, through walls, floors, doorways, or windows, or attached to building surfaces.", "cue": "Extension cord run through a doorway or fixed to a wall."},
 
     {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.178(m)(1)", "topic": "Powered trucks", "settings": ["general-industry", "warehouse"], "requirement": "Do not drive a truck toward a person who stands in front of a bench or fixed object.", "cue": "Forklift moves toward a worker at a bench."},
@@ -116,6 +121,7 @@
     {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.178(m)(3)", "topic": "Powered trucks", "settings": ["general-industry", "warehouse"], "requirement": "Do not let unauthorized people ride on a truck.", "cue": "Person rides on the forks or truck body."},
     {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.178(m)(5)(i)", "topic": "Powered trucks", "settings": ["general-industry", "warehouse"], "requirement": "When you leave a truck unattended, lower the forks, neutralize the controls, switch power off, and set the brakes.", "cue": "Forklift left with forks raised and no driver."},
     {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.178(n)(1)", "topic": "Powered trucks", "settings": ["general-industry", "warehouse"], "requirement": "Obey traffic rules and speed limits. Keep about three truck lengths from the truck ahead.", "cue": "Forklift speeds or follows too close."},
+    {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.178(n)(4)", "topic": "Powered trucks", "settings": ["general-industry", "warehouse"], "module": "load", "requirement": "Slow down and sound the horn where vision is blocked. If the load blocks the forward view, travel with the load trailing.", "cue": "Forklift drives forward with a load that blocks the view."},
 
     {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.176(a)", "topic": "Material handling", "settings": ["general-industry", "warehouse"], "requirement": "Leave safe clearance for aisles, docks, doorways, and turns where mechanical equipment is in use.", "cue": "Aisle too narrow for the equipment."},
     {"pack": "OSHA", "standard": "29 CFR 1910", "clause": "1910.176(b)", "topic": "Material handling", "settings": ["general-industry", "warehouse"], "requirement": "Store material so it does not create a hazard. Stack, block, and interlock tiers so they stay stable.", "cue": "Leaning or unstable stack."},

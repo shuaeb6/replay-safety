@@ -2,6 +2,8 @@
 
 Run: uv run --with pytest pytest tests/test_regulations.py
 """
+import csv
+import io
 import json
 import re
 import sys
@@ -17,6 +19,8 @@ import build_regulations_table as build  # noqa: E402
 DATA_PATH = ROOT / "data" / "regulations.json"
 ALL_DOC_PATH = ROOT / "docs" / "regulations-table.md"
 SETTING_DOC_PATH = ROOT / "docs" / "regulations-by-setting.md"
+CSV_PATH = ROOT / "data" / "regulations.csv"
+RULES_JS_PATH = ROOT / "app" / "rules.js"
 
 ROW_FIELDS = ("pack", "standard", "clause", "topic", "requirement", "cue")
 PACKS = ("OSHA", "OSHA-CONST", "cGMP", "EPA", "ISO")
@@ -114,6 +118,78 @@ def test_chem_lab_has_lab_specific_rules():
     chem = {r["clause"] for r in load()["rows"] if "chem-lab" in r["settings"]}
     assert "1910.1450(e)(3)(iii)" in chem  # fume hoods work
     assert "262.15(a)(4)" in chem  # waste container closed
+
+
+# --- detector modules -----------------------------------------------------
+
+
+def app_module_ids():
+    text = RULES_JS_PATH.read_text()
+    block = text[text.index("export const modules") : text.index("};")]
+    return set(re.findall(r"^\s*(\w+):\s*\{name:", block, re.MULTILINE))
+
+
+def test_module_registry_matches_app_rules_js():
+    assert set(load()["modules"]) == app_module_ids()
+
+
+def test_row_modules_are_known():
+    known = set(load()["modules"])
+    for row in load()["rows"]:
+        if "module" in row:
+            assert row["module"] in known, f"{row['clause']}: unknown module"
+
+
+def test_modules_map_to_expected_clauses():
+    by_clause = {r["clause"]: r.get("module") for r in load()["rows"]}
+    assert by_clause["1910.178(n)(4)"] == "load"  # load blocks forward view
+    assert by_clause["1910.303(g)(2)"] == "panel"  # open panel, live parts
+    assert by_clause["1910.22(a)(1)"] is None
+
+
+def test_modules_summary_lists_mapped_clauses_and_unmapped_modules():
+    text = build.render_modules_summary(load())
+    assert "| Load visibility | `load` | 1910.178(n)(4) |" in text
+    assert "| Walkway watch | `zone` | None |" in text
+
+
+# --- csv export -----------------------------------------------------------
+
+
+def test_render_csv_has_one_record_per_row_with_joined_settings():
+    data = load()
+    records = list(csv.DictReader(io.StringIO(build.render_csv(data))))
+    assert len(records) == len(data["rows"])
+    assert list(records[0]) == list(build.CSV_FIELDS)
+    first = data["rows"][0]
+    assert records[0]["clause"] == first["clause"]
+    assert records[0]["settings"] == ";".join(first["settings"])
+
+
+def test_render_csv_round_trips_commas_and_quotes():
+    data = {
+        "rows": [
+            {
+                "pack": "OSHA",
+                "standard": "29 CFR 1910",
+                "clause": "x",
+                "topic": "T",
+                "settings": ["chem-lab"],
+                "requirement": 'Mark "Exit", always.',
+                "cue": "C",
+            }
+        ]
+    }
+    record = next(csv.DictReader(io.StringIO(build.render_csv(data))))
+    assert record["requirement"] == 'Mark "Exit", always.'
+    assert record["module"] == ""
+
+
+def test_committed_csv_matches_generated_output():
+    assert CSV_PATH.read_text() == build.render_csv(load()), (
+        "data/regulations.csv is out of date. "
+        "Run: uv run scripts/build_regulations_table.py"
+    )
 
 
 # --- generator ------------------------------------------------------------
