@@ -50,14 +50,6 @@
     <div class="wall" id="wall"></div>
 
     <div class="stage-wrap">
-      <div class="stage-bar">
-        <div class="views" role="group" aria-label="Compare before and after your rules">
-          <button type="button" id="viewBefore" data-view="before" aria-pressed="true">Before <span id="beforeCount">2</span></button>
-          <button type="button" id="viewCompare" data-view="compare" aria-pressed="false" disabled>Compare</button>
-          <button type="button" id="viewAfter" data-view="after" aria-pressed="false" disabled>After <span id="afterCount">2</span></button>
-        </div>
-        <span class="view-note" id="viewNote">Before: people and scene captions only. Attach a rule to compare.</span>
-      </div>
       <div class="stage" id="stage">
         <video id="videoA" playsinline muted preload="auto"></video>
         <video id="videoB" playsinline muted preload="auto" hidden></video>
@@ -66,11 +58,6 @@
           <span class="tag" id="feedTag">—</span>
           <span class="tag dim" id="sourceTag">Indexed replay</span>
           <span class="clock" id="clock">SEG — · 00:00.0</span>
-        </div>
-        <div class="wipe" id="wipe" hidden>
-          <span class="wipe-label left" id="beforeLabel">Before · 2 modules</span>
-          <span class="wipe-label right" id="afterLabel">After</span>
-          <button class="wipe-handle" id="wipeHandle" type="button" aria-label="Drag to compare before and after the rule"><span></span></button>
         </div>
         <div class="toast" id="toast" hidden><i></i><div><strong id="toastTitle"></strong><small id="toastMeta"></small></div></div>
         <p class="caption" id="caption" hidden><span class="caption-src">Cosmos Reason</span><span id="captionText"></span></p>
@@ -105,7 +92,7 @@
   <aside class="panel" aria-label="Rule assistant">
     <div class="panel-head">
       <h1>What should Replay watch?</h1>
-      <p>Click the ruleset for this set of cameras. Replay searches the archive and lists each violation here, with the segment and a short description. You can also type a rule.</p>
+      <p>Type a violation. Replay shows only the clips in this set that match it.</p>
     </div>
     <div id="rulesets"></div>
     <div class="findings" id="findings" aria-live="polite"></div>
@@ -114,7 +101,7 @@
       <textarea id="requirement" rows="3" maxlength="400" placeholder="Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift."></textarea>
       <div class="composer-foot">
         <span class="hint" id="charCount">0 / 400</span>
-        <button class="send" id="sendButton" type="submit">Find modules</button>
+        <button class="send" id="sendButton" type="submit">Find clip</button>
       </div>
     </form>
     <div class="thread" id="thread" aria-live="polite"></div>
