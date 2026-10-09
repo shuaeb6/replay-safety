@@ -31,9 +31,11 @@ For each violation, the app shows:
 
 | Pack | Standard | Examples |
 |---|---|---|
-| OSHA | 29 CFR 1910 | PPE (1910.132, .133), exits (1910.37), hazard labels (1910.1200), surfaces (1910.23) |
+| OSHA | 29 CFR 1910 | PPE (1910.132, .133), exits (1910.37), hazard labels (1910.1200), walking-working surfaces (1910.22), ladders (1910.23) |
 | ISO | ISO 45001, ISO 14644 | Workplace safety, cleanroom control |
 | cGMP | 21 CFR 211 | Personnel and gowning (211.28) |
+
+For the full list of clauses, see the [regulations table](regulations-table.md).
 
 ## 5. How it works
 
