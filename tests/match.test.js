@@ -9,9 +9,10 @@ const rules = [
   {id: 'pizza_lunchtime', name: 'Pizza at lunch', query: 'the pizza was not on the lunch table at the promised time of 12:30', violation: 'The pizza was not there at the promised time of 12:30.', terms: ['late', 'missing', 'promised']},
   {id: 'pizza_other_tables', name: 'Pizza on other tables', query: 'pizza on a work table', violation: 'Food is on a table that is not the lunch table.', terms: ['other']},
   {id: 'do_not_enter', name: 'Do not enter', query: 'a door marked do not enter', violation: 'A person is at a door marked do not enter.'},
-  {id: 'running_indoors', name: 'Running indoors', query: 'a person running indoors', violation: 'A person is running indoors.'},
   {id: 'table_moved', name: 'Table moved', query: 'a table that has been moved', violation: 'A table has been moved.'},
 ];
+
+const clear = [{id: 'running_indoors', name: 'Running indoors', note: 'No violation in this clip.'}];
 
 const feeds = [
   {name: 'Restroom entry', filename: 'restroom-entry.mp4'},
@@ -57,8 +58,21 @@ test('an empty query keeps every clip', () => {
 });
 
 test('an unknown query keeps no clips', () => {
-  const found = matchFeeds('forklift in the aisle', feeds, rules);
+  const found = matchFeeds('forklift in the aisle', feeds, rules, clear);
   assert.deepEqual(found.feeds, []);
+  assert.equal(found.clear, false);
+});
+
+test('a search for no violations keeps only the running clip', () => {
+  const found = matchFeeds('show where there are no violations', feeds, rules, clear);
+  assert.equal(found.clear, true);
+  assert.deepEqual(found.rules, []);
+  assert.deepEqual(found.feeds.map((feed) => feed.filename), ['running-indoors.mp4']);
+});
+
+test('the running clip is not a violation', () => {
+  const feed = {name: 'Running indoors', filename: 'running-indoors.mp4', duration: 5, segments: [{start: 0, end: 5, caption: 'a person running indoors'}]};
+  assert.deepEqual(violationSpans(feed, rules), []);
 });
 
 test('a caption narrows the violation to that segment', () => {

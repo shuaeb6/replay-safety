@@ -43,17 +43,43 @@ function feedHitsRule(feed, rule) {
   return needles.every((word) => hay.has(word));
 }
 
-export function matchFeeds(query, feeds, rules) {
+function isClearQuery(query) {
+  const text = String(query || '').toLowerCase();
+  if (!/violations?/.test(text)) return false;
+  return /\bno\b|\bnone\b|\bwithout\b|\bzero\b|\bclean\b|\bcompliant\b/.test(text);
+}
+
+function feedHitsClear(feed, item) {
+  const filename = String(feed.filename || '').replace(/\.[a-z0-9]+$/i, '');
+  const hay = new Set(tokens(`${feed.name || ''} ${filename}`));
+  const needles = tokens(item.name).filter((word) => !GENERIC.has(word));
+  return needles.length > 0 && needles.every((word) => hay.has(word));
+}
+
+function clearFeeds(feeds, clear) {
+  return (feeds || []).filter((feed) => (clear || []).some((item) => feedHitsClear(feed, item)));
+}
+
+export function matchFeeds(query, feeds, rules, clear = []) {
+  if (isClearQuery(query)) return {rules: [], clear: true, feeds: clearFeeds(feeds, clear)};
   const wanted = tokens(query);
-  if (!wanted.length) return {rules: [], feeds};
+  if (!wanted.length) return {rules: [], feeds, clear: false};
   const scored = (rules || []).map((rule) => {
     const words = haystack(rule);
     return {rule, score: wanted.filter((word) => words.has(word)).length};
   }).filter((row) => row.score > 0);
-  if (!scored.length) return {rules: [], feeds: []};
+  if (!scored.length) {
+    const specific = wanted.filter((word) => !GENERIC.has(word));
+    const named = specific.length ? (clear || []).filter((item) => {
+      const hay = new Set(tokens(item.name));
+      return specific.every((word) => hay.has(word));
+    }) : [];
+    if (named.length) return {rules: [], clear: true, feeds: clearFeeds(feeds, named)};
+    return {rules: [], feeds: [], clear: false};
+  }
   const top = Math.max(...scored.map((row) => row.score));
   const winners = scored.filter((row) => row.score === top).map((row) => row.rule);
-  return {rules: winners, feeds: feeds.filter((feed) => winners.some((rule) => feedHitsRule(feed, rule)))};
+  return {rules: winners, clear: false, feeds: feeds.filter((feed) => winners.some((rule) => feedHitsRule(feed, rule)))};
 }
 
 function segmentMatchesRule(seg, rule) {

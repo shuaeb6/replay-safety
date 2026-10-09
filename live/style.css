@@ -201,6 +201,9 @@ h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
 .pack-rules button.violation { border-left: 4px solid var(--alert); background: color-mix(in srgb, var(--alert) 8%, var(--card)); }
 .pack-rules button.on { border-color: var(--forest); background: var(--forest-soft); }
 .pack-rules button.violation.on { border-color: var(--alert); background: color-mix(in srgb, var(--alert) 16%, var(--card)); }
+.pack-rules button.clear { border-left: 4px solid var(--ok); background: color-mix(in srgb, var(--ok) 8%, var(--card)); }
+.pack-rules button.clear em { background: var(--ok); }
+.pack-rules button.clear.on { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, var(--card)); }
 .finding.violation { border-left-color: var(--alert); background: color-mix(in srgb, var(--alert) 8%, var(--card)); }
 .findings h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); display: flex; gap: 8px; align-items: baseline; }
 .findings h3 .count { font: 700 13px var(--mono); color: var(--alert); }

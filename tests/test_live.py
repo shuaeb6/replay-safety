@@ -46,8 +46,11 @@ class RulesetTests(unittest.TestCase):
         ids = [r["id"] for r in CATALOG["rulesets"]["hackathon"]["rules"]]
         self.assertEqual(ids, [
             "do_not_enter", "fire_alarm", "office_entry", "pizza_lunchtime",
-            "pizza_other_tables", "restroom_entry", "running_indoors", "table_moved",
+            "pizza_other_tables", "restroom_entry", "table_moved",
         ])
+        clear = [c["id"] for c in CATALOG["rulesets"]["hackathon"]["clear"]]
+        self.assertEqual(clear, ["running_indoors"])
+        self.assertNotIn("running_indoors", ids)
         factory = {r["id"] for r in CATALOG["rulesets"]["industrial"]["rules"]}
         self.assertTrue({"near_vehicle", "blocked_path", "lingering", "crowding"} <= factory)
 

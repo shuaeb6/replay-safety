@@ -65,7 +65,7 @@
   },
   "hackathon": {
    "name": "Office rules",
-   "summary": "Office clips only: do-not-enter, fire alarm, office entry, pizza missing at 12:30, food on other tables, a man entering the women's bathroom, running indoors, and a moved table.",
+   "summary": "Office clips only: do-not-enter, fire alarm, office entry, pizza missing at 12:30, food on other tables, a man entering the women's bathroom, and a moved table. Running indoors has no violation.",
    "rules": [
     {"id": "do_not_enter", "name": "Do not enter", "kind": "retrieval", "color": "#FF6B5B", "query": "a person at a door marked do not enter", "params": {"min_score": 0.3}, "clause": "Office door policy", "violation": "A person is at a door marked do not enter.", "terms": ["restricted", "prohibited"]},
     {"id": "fire_alarm", "name": "Fire alarm", "kind": "retrieval", "color": "#E23B2F", "query": "a person standing at or pulling a fire alarm", "params": {"min_score": 0.3}, "clause": "Office fire-alarm policy", "violation": "A person is at the fire alarm.", "terms": ["pull"]},
@@ -73,8 +73,10 @@
     {"id": "pizza_lunchtime", "name": "Pizza at lunch", "kind": "retrieval", "color": "#FF6B5B", "query": "the pizza was not on the lunch table at the promised time of 12:30", "params": {"min_score": 0.3}, "clause": "Pizza promised by 12:30", "violation": "The pizza was not there at the promised time of 12:30.", "terms": ["late", "missing", "promised"]},
     {"id": "pizza_other_tables", "name": "Pizza on other tables", "kind": "retrieval", "color": "#D4782A", "query": "pizza or food left on a work table that is not the lunch table", "params": {"min_score": 0.3}, "clause": "Office food policy", "violation": "Food is on a table that is not the lunch table.", "terms": ["other"]},
     {"id": "restroom_entry", "name": "Women's bathroom", "kind": "retrieval", "color": "#FF6B5B", "query": "a man entering the women's bathroom", "params": {"min_score": 0.3}, "clause": "Women's restroom policy", "violation": "A man is entering the women's bathroom.", "terms": ["restroom", "male", "toilet"]},
-    {"id": "running_indoors", "name": "Running indoors", "kind": "retrieval", "color": "#B69CFF", "query": "a person running indoors through an office or hallway", "params": {"min_score": 0.3}, "clause": "Office movement policy", "violation": "A person is running indoors."},
     {"id": "table_moved", "name": "Table moved", "kind": "retrieval", "color": "#7FD1A7", "query": "a table that has been moved out of place in an office", "params": {"min_score": 0.3}, "clause": "Office furniture policy", "violation": "A table has been moved."}
+   ],
+   "clear": [
+    {"id": "running_indoors", "name": "Running indoors", "note": "No violation in this clip."}
    ]
   },
   "streets": {
@@ -101,7 +103,7 @@
    "Show me a person entering an office.",
    "Show me that the pizza was not there at the promised time of 12:30.",
    "Show me a man entering the women's bathroom.",
-   "Show me a person running indoors.",
+   "Show me where there are no violations.",
    "Show me a table that has been moved."
   ],
   "streets": [

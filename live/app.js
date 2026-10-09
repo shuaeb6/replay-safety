@@ -37,6 +37,7 @@ const S = {
   retrieval: new Map(),
   thumbs: new Map(),
   focusRuleIds: new Set(),
+  clearClip: false,
   violationSpans: [],
   wipe: 1, wipeOn: false, view: 'before',
   drawing: null,
@@ -425,7 +426,9 @@ function renderFindings() {
   const fromClip = spans.flatMap((span) => span.ranges.map((range) => ({span, range})));
   const list = allMoments();
   if (!list.length && !fromClip.length) {
-    box.innerHTML = S.attached.length
+    box.innerHTML = S.clearClip
+      ? '<h3>No violation</h3><p class="sub">This clip does not break a rule.</p>'
+      : S.attached.length
       ? '<p class="sub">No violation on this camera yet. Play other feeds, or wait for the archive search.</p>'
       : '';
     return;
@@ -469,9 +472,12 @@ function renderRulesets() {
         const r = ruleSpec(raw);
         const on = attached.has(r.id) || S.focusRuleIds.has(r.id);
         return `<button type="button" data-rule="${esc(r.id)}" class="violation${on ? ' on' : ''}"><span class="rule-top"><strong>${esc(r.name)}</strong><em>Violation</em></span><small>${esc(r.violation || r.clause)}</small></button>`;
-      }).join('')}</div>
+      }).join('')}${(pack.clear || []).map((item) => `<button type="button" data-clear="${esc(item.id)}" class="clear${S.clearClip ? ' on' : ''}"><span class="rule-top"><strong>${esc(item.name)}</strong><em>No violation</em></span><small>${esc(item.note || 'This clip does not break a rule.')}</small></button>`).join('')}</div>
     </div>`;
   $('runPack').onclick = () => showAllClips();
+  box.querySelectorAll('[data-clear]').forEach((b) => {
+    b.onclick = () => applyClipFilter('show where there are no violations');
+  });
   box.querySelectorAll('[data-rule]').forEach((b) => {
     b.onclick = () => {
       const rule = pack.rules.map(ruleSpec).find((r) => r.id === b.dataset.rule);
@@ -842,6 +848,7 @@ function stepHtml(state, text, note = '') {
 
 function showAllClips() {
   S.focusRuleIds = new Set();
+  S.clearClip = false;
   S.feeds = S.allFeeds || S.feeds;
   $('requirement').value = '';
   $('charCount').textContent = '0 / 400';
@@ -855,11 +862,13 @@ function showAllClips() {
 async function applyClipFilter(query) {
   const text = query.trim();
   if (!text) { showAllClips(); return; }
-  const rules = (packFor(S.set)?.rules || []).map(ruleSpec);
-  const found = matchFeeds(text, S.allFeeds || [], rules);
+  const pack = packFor(S.set);
+  const rules = (pack?.rules || []).map(ruleSpec);
+  const found = matchFeeds(text, S.allFeeds || [], rules, pack?.clear || []);
   S.focusRuleIds = new Set(found.rules.map((rule) => rule.id));
+  S.clearClip = Boolean(found.clear);
   S.feeds = found.feeds;
-  const names = found.rules.map((rule) => rule.name).join(', ');
+  const names = found.clear ? 'no violation' : found.rules.map((rule) => rule.name).join(', ');
   $('thread').innerHTML = `<div class="bubble">${esc(text)}</div><div class="reply">${S.feeds.length
     ? `<div class="attached-note">${S.feeds.length} clip${S.feeds.length === 1 ? '' : 's'} · ${esc(names)}</div>`
     : '<div class="error"><strong>No matching clip in this set.</strong> Try one of the violations listed above.</div>'}</div>`;
@@ -969,6 +978,7 @@ async function loadCamera(cameraId) {
   S.events.clear();
   S.retrieval.clear();
   S.focusRuleIds = new Set();
+  S.clearClip = false;
   renderRulesets();
   $('wall').innerHTML = '<div class="tile skeleton"></div>'.repeat(4);
   $('emptyTitle').textContent = 'Loading the archive…';

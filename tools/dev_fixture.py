@@ -46,6 +46,7 @@ class FixtureArchive:
         clips = [
             ("restroom-entry.mp4", "Restroom entry", ["people sitting at desks", "a man entering the women's bathroom"]),
             ("fire-alarm.mp4", "Fire alarm", ["", ""]),
+            ("running-indoors.mp4", "Running indoors", ["", ""]),
         ]
         feeds = []
         for filename, title, captions in clips:
