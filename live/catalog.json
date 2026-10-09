@@ -1,0 +1,59 @@
+{
+ "version": 1,
+ "baseline": [
+  {"id": "people", "name": "People", "source": "YOLO11 · per-frame boxes", "color": "#E7ECE9", "summary": "Every person the detector boxed at ingest."},
+  {"id": "captions", "name": "Scene captions", "source": "Cosmos Reason · per 5 s segment", "color": "#9FE6C4", "summary": "What the reasoning model wrote about each segment."}
+ ],
+ "modules": [
+  {
+   "id": "zone_entry",
+   "name": "Restricted lane",
+   "kind": "zone",
+   "color": "#FFB547",
+   "summary": "Flags a person whose feet stay inside the lane you draw on this camera.",
+   "evidence": "Computed from YOLO11 person boxes and your drawn lane. Image-space position, not calibrated distance.",
+   "requires": ["person_boxes", "zone"],
+   "params": {"dwell_seconds": {"label": "Time inside lane", "unit": "s", "min": 0.2, "max": 30, "step": 0.1, "default": 1}}
+  },
+  {
+   "id": "near_forklift",
+   "name": "Near a forklift",
+   "kind": "retrieval",
+   "color": "#FF6B5B",
+   "summary": "Finds segments where the scene caption describes a person close to a forklift.",
+   "evidence": "VAST hybrid search over Cosmos Reason captions. The match score ranks relevance; it is not a safety confidence.",
+   "requires": ["captions"],
+   "query": "a person standing or walking close to a forklift",
+   "params": {"min_score": {"label": "Minimum match score", "unit": "", "min": 0.2, "max": 0.9, "step": 0.05, "default": 0.4}}
+  },
+  {
+   "id": "lingering",
+   "name": "Lingering",
+   "kind": "dwell",
+   "color": "#B69CFF",
+   "summary": "Flags a person who stays in roughly the same spot for too long.",
+   "evidence": "Computed from YOLO11 person boxes tracked across frames.",
+   "requires": ["person_boxes"],
+   "params": {"dwell_seconds": {"label": "Time without moving", "unit": "s", "min": 0.5, "max": 30, "step": 0.5, "default": 2}}
+  },
+  {
+   "id": "crowding",
+   "name": "Crowding",
+   "kind": "headcount",
+   "color": "#5CC8FF",
+   "summary": "Flags when more people than allowed are visible at once.",
+   "evidence": "Computed from YOLO11 person counts per frame.",
+   "requires": ["person_boxes"],
+   "params": {
+    "max_people": {"label": "People allowed", "unit": "", "min": 1, "max": 20, "step": 1, "default": 2},
+    "min_seconds": {"label": "For at least", "unit": "s", "min": 0.2, "max": 30, "step": 0.1, "default": 1}
+   }
+  }
+ ],
+ "unsupported": [
+  {"topic": "PPE such as hard hats, vests, or gloves", "why": "The detector only boxes people; it does not classify protective equipment, and an occluded helmet would be unknown, not missing."},
+  {"topic": "vehicle speed or physical distance in metres", "why": "Measuring speed or distance needs calibrated camera geometry, which this archive does not provide."},
+  {"topic": "fire, smoke, spills, or blocked exits", "why": "No indexed footage or detector output covers these events."},
+  {"topic": "forklift boxes or forklift tracking", "why": "The YOLO11 COCO detector returns no forklift class on this footage; forklifts are only described in captions."}
+ ]
+}

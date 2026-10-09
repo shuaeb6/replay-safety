@@ -1,47 +1,88 @@
 """Replay safety board. Serves the UI and proxies the team video archive.
 
-Credentials come from VSS_URL, VSS_USERNAME, and VSS_PASSWORD. They stay on the
-server. The browser never receives them.
+Credentials come from VSS_URL, VSS_USERNAME, VSS_PASSWORD and WANDB_API_KEY /
+WANDB_TEAM / WANDB_PROJECT (Kubernetes Secret), or from the VM's single
+/config/<team>.config file when run directly on the workshop VM. They stay on
+the server. The browser never receives them.
 """
 
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlencode, urlparse
+import glob
 import json
 import os
+import re
 import threading
+import time
 import urllib.error
 import urllib.request
 
+from compiler import WandbCompiler, load_catalog
+
+
+def _team_config():
+    """Read the VM's /config/<team>.config without sourcing it (USERNAME clashes with the shell)."""
+    files = sorted(glob.glob("/config/*.config"))
+    values = {}
+    if len(files) == 1:
+        for line in open(files[0], encoding="utf-8"):
+            match = re.match(r"\s*(?:export\s+)?([A-Z0-9_]+)=(.*)$", line)
+            if match:
+                values[match.group(1)] = match.group(2).strip().strip("\"'")
+    return values
+
+
+_CFG = {} if os.environ.get("VSS_URL") else _team_config()
 ROOT = Path(__file__).resolve().parent
 PORT = int(os.environ.get("PORT", "8080"))
-VSS_URL = os.environ.get("VSS_URL", "").rstrip("/")
-VSS_USERNAME = os.environ.get("VSS_USERNAME", "")
-VSS_PASSWORD = os.environ.get("VSS_PASSWORD", "")
+HOST = os.environ.get("HOST", "0.0.0.0")
+VSS_URL = (os.environ.get("VSS_URL") or _CFG.get("INGRESS_URL", "")).rstrip("/")
+VSS_USERNAME = os.environ.get("VSS_USERNAME") or _CFG.get("USERNAME", "")
+VSS_PASSWORD = os.environ.get("VSS_PASSWORD") or _CFG.get("PASSWORD", "")
+WANDB = WandbCompiler(
+    os.environ.get("WANDB_API_KEY") or _CFG.get("WANDB_API_KEY", ""),
+    os.environ.get("WANDB_TEAM") or _CFG.get("WANDB_TEAM", ""),
+    os.environ.get("WANDB_PROJECT") or _CFG.get("WANDB_PROJECT", ""),
+    os.environ.get("WANDB_MODEL") or None,
+)
+DEFAULT_CAMERA = os.environ.get("REPLAY_CAMERA", "sdg_warehouse_cam-2")
+PINNED_FEEDS = [s for s in os.environ.get("REPLAY_FEEDS", "").split(",") if s.strip()]
 
+# camera_id: (name, place, tone, synthetic). Synthetic = rendered footage, confirmed by visual review on the VM.
 CAMERA_INFO = {
-    "sdg_warehouse_cam-2": ("Warehouse aisle", "Warehouse · ceiling", "warehouse"),
-    "smartspace_cam-1": ("Indoor floor", "Facility · indoor", "warehouse"),
-    "i24_cam-1": ("Highway", "Nashville · I-24", "road"),
-    "pie_cam-3": ("City drive", "Toronto · forward cam", "road"),
-    "neighborhood_cam-1": ("Neighborhood", "Residential street", "street"),
-    "nyc_streets_cam-1": ("NYC street A", "New York", "street"),
-    "nyc_streets_cam-2": ("NYC street B", "New York", "street"),
-    "nyc_bike_gopro-1": ("NYC bike", "New York · rider cam", "street"),
-    "sf_streets_cam-1": ("SF street 1", "San Francisco", "street"),
-    "sf_streets_cam-2": ("SF street 2", "San Francisco", "street"),
-    "sf_streets_cam-3": ("SF street 3", "San Francisco", "street"),
-    "sf_streets_cam-4": ("SF street 4", "San Francisco", "street"),
-    "sf_streets_cam-5": ("SF street 5", "San Francisco", "street"),
+    "sdg_warehouse_cam-2": ("Warehouse aisle", "Warehouse 3 · synthetic", "warehouse", True),
+    "smartspace_cam-1": ("Indoor floor", "Facility · synthetic", "warehouse", True),
+    "i24_cam-1": ("Highway", "Nashville · I-24", "road", False),
+    "pie_cam-3": ("City drive", "Toronto · forward cam", "road", False),
+    "neighborhood_cam-1": ("Neighborhood", "Residential street", "street", False),
+    "nyc_streets_cam-1": ("NYC street A", "New York", "street", False),
+    "nyc_streets_cam-2": ("NYC street B", "New York", "street", False),
+    "nyc_bike_gopro-1": ("NYC bike", "New York · rider cam", "street", False),
+    "sf_streets_cam-1": ("SF street 1", "San Francisco", "street", False),
+    "sf_streets_cam-2": ("SF street 2", "San Francisco", "street", False),
+    "sf_streets_cam-3": ("SF street 3", "San Francisco", "street", False),
+    "sf_streets_cam-4": ("SF street 4", "San Francisco", "street", False),
+    "sf_streets_cam-5": ("SF street 5", "San Francisco", "street", False),
 }
 CAMERA_ORDER = list(CAMERA_INFO)
-QUIET_QUERY = "empty scene with no people and no moving vehicles"
 STATIC = {
-    "/": "index.html",
-    "/index.html": "index.html",
-    "/style.css": "style.css",
-    "/client.js": "client.js",
+    "/": ("index.html", "text/html"),
+    "/index.html": ("index.html", "text/html"),
+    "/style.css": ("style.css", "text/css"),
+    "/app.js": ("app.js", "text/javascript"),
+    "/engine.js": ("engine.js", "text/javascript"),
+    "/catalog.json": ("catalog.json", "application/json"),
 }
+
+# Every upstream service call, for the in-app "services used" strip and the evidence report.
+CALLS = deque(maxlen=300)
+
+
+def record(service, op, started, ok, note=""):
+    CALLS.append({"at": time.strftime("%H:%M:%S"), "service": service, "op": op,
+                  "ms": round((time.perf_counter() - started) * 1000), "ok": ok, "note": note[:160]})
 
 
 def safe_source(source, username):
@@ -60,71 +101,92 @@ def safe_source(source, username):
     return bucket in allowed
 
 
-def _sentence(text):
-    text = " ".join((text or "").split())
-    if not text:
-        return ""
-    for mark in (". ", "。"):
-        if mark in text:
-            return text.split(mark, 1)[0].strip() + "."
-    return text[:140]
+def view_name(filename):
+    """Readable feed name from the archive filename, e.g. '...run_7_seed_9.ceiling_04.rgb_chunk_0000.mp4'."""
+    name = filename or ""
+    match = re.search(r"\.(ceiling|eye)_(\d+)\.rgb", name)
+    run = re.search(r"run_(\d+)", name)
+    if match:
+        title = f"{'Ceiling' if match.group(1) == 'ceiling' else 'Eye level'} {match.group(2)}"
+        return title, f"Scene {run.group(1)}" if run else ""
+    match = re.search(r"Camera_?(\d+)", name)
+    if match:
+        chunk = re.search(r"chunk_(\d+)", name)
+        return f"Camera {match.group(1)}", f"Part {int(chunk.group(1)) + 1}" if chunk else ""
+    stem = name.rsplit("/", 1)[-1].split(".")[0]
+    return stem[:24] or "Feed", ""
 
 
-def moment_from_chunk(chunk):
-    timeline = chunk.get("timeline") or []
-    best = next((row for row in timeline if row.get("is_best_match")), None)
-    if best is None and timeline:
-        best = max(timeline, key=lambda row: row.get("similarity_score") or 0)
-    reasoning = (best or {}).get("reasoning_content") or chunk.get("reasoning_content") or ""
-    objects = (best or {}).get("object_classes") or ""
-    if isinstance(objects, list):
-        objects = ", ".join(str(item) for item in objects)
-    source = chunk.get("preview_source") or ""
-    if not safe_source(source, VSS_USERNAME):
-        source = ""
+def feed_from_item(item, segments_bucket=""):
+    """Normalise one /videos/explore (or search chunk) item into a playable feed of ordered segments."""
+    original = item.get("original_video") or ""
+    filename = item.get("filename") or original.rsplit("/", 1)[-1]
+    timeline = [row for row in item.get("timeline") or [] if isinstance(row, dict)]
+    total = int(item.get("total_segments") or len(timeline) or 0)
+    segments = []
+    if timeline:
+        for row in sorted(timeline, key=lambda r: r.get("segment_number") or 0):
+            segments.append({
+                "n": row.get("segment_number"),
+                "start": float(row.get("segment_start_sec") or 0),
+                "end": float(row.get("segment_end_sec") or 0),
+                "source": row.get("source") or "",
+                "caption": " ".join((row.get("reasoning_content") or "").split())[:700],
+                "objects": row.get("object_counts") or "",
+            })
+    elif total and original.endswith(".mp4"):
+        # Segment keys follow '<bucket>-segments/segments/<stem>_segment_00N_of_00T.mp4' (seen in search results).
+        bucket = segments_bucket or original[5:].split("/", 1)[0] + "-segments"
+        stem = filename[:-4]
+        length = float(item.get("chunk_duration_sec") or total * 5.0) / total
+        for n in range(1, total + 1):
+            segments.append({"n": n, "start": (n - 1) * length, "end": n * length, "caption": "", "objects": "",
+                             "source": f"s3://{bucket}/segments/{stem}_segment_{n:03d}_of_{total:03d}.mp4"})
+    segments = [s for s in segments if safe_source(s["source"], VSS_USERNAME)]
+    if not segments or (total and len(segments) != total):
+        return None
+    title, subtitle = view_name(filename)
+    camera_id = item.get("camera_id") or ""
     return {
-        "title": _sentence(reasoning) or "Indexed moment",
-        "detail": " ".join(reasoning.split())[:700],
-        "camera_id": chunk.get("camera_id") or "",
-        "location": chunk.get("location") or "",
-        "start_sec": chunk.get("best_match_start_sec"),
-        "end_sec": chunk.get("best_match_end_sec"),
-        "score": chunk.get("similarity_score"),
-        "source": source,
-        "objects": objects,
-        "filename": chunk.get("filename") or "",
+        "id": original,
+        "name": title,
+        "subtitle": subtitle,
+        "camera_id": camera_id,
+        "location": item.get("location") or "",
+        "synthetic": CAMERA_INFO.get(camera_id, ("", "", "", False))[3],
+        "duration": segments[-1]["end"],
+        "segments": segments,
+        "filename": filename,
     }
 
 
-def trim_detections(payload):
-    frames = payload.get("frames") or []
-    step = max(1, len(frames) // 150) if len(frames) > 180 else 1
-    trimmed = []
-    for frame in frames[::step]:
+def compact_detections(payload):
+    """YOLO sidecar -> {w, h, fps, frames: [[t, [[label, conf, x1, y1, x2, y2], ...]], ...]}."""
+    height, width = (payload.get("video_shape") or [1080, 1920])[:2]
+    frames = []
+    for frame in payload.get("frames") or []:
         boxes = []
         for det in (frame.get("detections") or [])[:24]:
-            boxes.append({
-                "label": det.get("label") or "",
-                "confidence": det.get("confidence"),
-                "bbox": det.get("bbox"),
-            })
-        trimmed.append({"time_sec": frame.get("time_sec"), "detections": boxes})
-    return {
-        "video_shape": payload.get("video_shape"),
-        "fps": payload.get("fps"),
-        "object_classes": payload.get("object_classes") or [],
-        "frames": trimmed,
-        "sampled": step > 1,
-    }
+            bbox = det.get("bbox") or []
+            if len(bbox) == 4:
+                boxes.append([det.get("label") or "", round(det.get("confidence") or 0, 3)] + [round(v, 1) for v in bbox])
+        frames.append([round(float(frame.get("time_sec") or 0), 4), boxes])
+    return {"w": width, "h": height, "fps": payload.get("fps"), "classes": payload.get("object_classes") or [],
+            "source": payload.get("source") or "", "frames": frames}
 
 
 class Archive:
     def __init__(self):
         self._token = None
         self._lock = threading.Lock()
+        self._explore = (0, [])
+
+    @property
+    def configured(self):
+        return bool(VSS_URL and VSS_USERNAME and VSS_PASSWORD)
 
     def _login(self):
-        if not VSS_URL or not VSS_USERNAME or not VSS_PASSWORD:
+        if not self.configured:
             raise RuntimeError("Video archive is not configured on this server.")
         body = json.dumps({"username": VSS_USERNAME, "password": VSS_PASSWORD}).encode()
         request = urllib.request.Request(
@@ -132,14 +194,18 @@ class Archive:
             data=body,
             headers={"Content-Type": "application/json"},
         )
+        started = time.perf_counter()
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
                 payload = json.load(response)
         except urllib.error.HTTPError as exc:
+            record("VAST VSS", "login", started, False)
             raise RuntimeError("Archive login failed.") from exc
         except urllib.error.URLError as exc:
+            record("VAST VSS", "login", started, False)
             raise RuntimeError("Archive is unreachable.") from exc
         token = payload.get("access_token")
+        record("VAST VSS", "login", started, bool(token))
         if not token:
             raise RuntimeError("Archive login failed.")
         self._token = token
@@ -151,22 +217,26 @@ class Archive:
                 return self._token
             return self._login()
 
-    def call(self, method, path, payload=None, timeout=90):
+    def call(self, method, path, payload=None, timeout=90, op=None):
         data = None if payload is None else json.dumps(payload).encode()
         last_error = None
+        op = op or path.split("?", 1)[0].replace("/api/v1", "")
         for attempt in range(2):
             token = self.token(force=attempt == 1)
             headers = {"Authorization": f"Bearer {token}"}
             if data is not None:
                 headers["Content-Type"] = "application/json"
             request = urllib.request.Request(f"{VSS_URL}{path}", data=data, headers=headers, method=method)
+            started = time.perf_counter()
             try:
                 with urllib.request.urlopen(request, timeout=timeout) as response:
                     raw = response.read()
+                    record("VAST VSS", op, started, True)
                     if not raw:
                         return {}
                     return json.loads(raw)
             except urllib.error.HTTPError as exc:
+                record("VAST VSS", op, started, False, f"HTTP {exc.code}")
                 last_error = exc
                 if exc.code == 401 and attempt == 0:
                     continue
@@ -180,6 +250,7 @@ class Archive:
                     detail = ""
                 raise RuntimeError(detail[:240] or f"Archive request failed ({exc.code}).") from exc
             except urllib.error.URLError as exc:
+                record("VAST VSS", op, started, False, "unreachable")
                 raise RuntimeError("Archive is unreachable.") from exc
         raise RuntimeError("Archive login failed.") from last_error
 
@@ -194,44 +265,101 @@ class Archive:
         ordered += sorted(camera_id for camera_id in counts if camera_id not in CAMERA_ORDER)
         cameras = []
         for camera_id in ordered:
-            name, place, tone = CAMERA_INFO.get(camera_id, (camera_id, "Indexed camera", "street"))
-            cameras.append({
-                "id": camera_id,
-                "name": name,
-                "place": place,
-                "tone": tone,
-                "segments": counts.get(camera_id) or 0,
-            })
+            name, place, tone, synthetic = CAMERA_INFO.get(camera_id, (camera_id, "Indexed camera", "street", False))
+            cameras.append({"id": camera_id, "name": name, "place": place, "tone": tone,
+                            "synthetic": synthetic, "segments": counts.get(camera_id) or 0})
         overview = stats.get("overview") or {}
-        return {
-            "cameras": cameras,
-            "indexed_clips": overview.get("indexed_clips"),
-            "quiet_query": QUIET_QUERY,
-        }
+        return {"cameras": cameras, "indexed_clips": overview.get("indexed_clips")}
 
-    def search(self, query, camera_id):
-        body = {
-            "query": query,
-            "top_k": 8,
-            "llm_top_n": 3,
-            "min_similarity": 0.28,
-            "include_public": True,
-        }
-        if camera_id:
-            body["metadata_filters"] = {"camera_id": camera_id}
+    def _explore_all(self):
+        fetched_at, items = self._explore
+        if items and time.time() - fetched_at < 300:
+            return items
+        items, offset = [], 0
+        while offset < 2000:
+            page = self.call("GET", f"/api/v1/videos/explore?scope=all&limit=100&offset={offset}", op="/videos/explore")
+            rows = next((v for v in page.values() if isinstance(v, list)), []) if isinstance(page, dict) else []
+            items += [row for row in rows if isinstance(row, dict)]
+            offset += 100
+            total = page.get("total") if isinstance(page, dict) else None
+            if not rows or (isinstance(total, int) and offset >= total):
+                break
+        self._explore = (time.time(), items)
+        return items
+
+    def feeds(self, camera_id, limit=6):
+        feeds = [f for f in (feed_from_item(it, _CFG.get("S3_SEGMENTS_BUCKET", "")) for it in self._explore_all()
+                             if it.get("camera_id") == camera_id) if f]
+        if PINNED_FEEDS:
+            pinned = [f for key in PINNED_FEEDS for f in feeds if key.strip() in f["filename"]]
+            feeds = pinned + [f for f in feeds if f not in pinned]
+        else:
+            # Prefer distinct viewpoints so the wall shows different angles of the archive.
+            seen, varied, rest = set(), [], []
+            for f in sorted(feeds, key=lambda f: f["filename"]):
+                (rest if f["name"] in seen else varied).append(f)
+                seen.add(f["name"])
+            feeds = varied + rest
+        return {"camera_id": camera_id, "feeds": feeds[:limit], "available": len(feeds)}
+
+    def segment(self, source):
+        row = self.call("GET", "/api/v1/videos/metadata?" + urlencode({"source": source}))
+        return {"source": source, "caption": " ".join((row.get("reasoning_content") or "").split())[:900],
+                "objects": row.get("object_counts") or "", "model": row.get("cosmos_model") or "",
+                "start": row.get("segment_start_sec"), "end": row.get("segment_end_sec")}
+
+    def detections(self, source):
+        try:
+            payload = self.call("GET", "/api/v1/videos/detections?" + urlencode({"source": source}), timeout=40)
+        except RuntimeError as exc:
+            message = str(exc).lower()
+            if "404" in message or "not found" in message:
+                return {"frames": [], "classes": [], "unavailable": True}
+            raise
+        return compact_detections(payload)
+
+    def evidence(self, module, params, camera_id):
+        """Retrieval module: VAST hybrid search over Cosmos captions on one camera."""
+        started = time.perf_counter()
+        body = {"query": module["query"], "top_k": 12, "llm_top_n": 1,
+                "min_similarity": params["min_score"], "include_public": True,
+                "metadata_filters": {"camera_id": camera_id}}
         result = self.call("POST", "/api/v1/search", body, timeout=120)
-        synthesis = result.get("llm_synthesis") or {}
-        moments = [moment_from_chunk(chunk) for chunk in result.get("chunk_results") or []]
-        moments = [moment for moment in moments if moment["source"]]
-        return {
-            "query": query,
-            "answer": synthesis.get("response") or "",
-            "model": synthesis.get("model") or "",
-            "moments": moments,
-        }
+        moments = []
+        for chunk in result.get("chunk_results") or []:
+            score = chunk.get("similarity_score") or 0
+            feed = feed_from_item(chunk, _CFG.get("S3_SEGMENTS_BUCKET", ""))
+            source = chunk.get("preview_source") or ""
+            if score < params["min_score"] or not feed or not safe_source(source, VSS_USERNAME):
+                continue
+            best = next((s for s in feed["segments"] if s["source"] == source), None)
+            moments.append({
+                "feed": feed, "source": source, "score": round(score, 3),
+                "start": chunk.get("best_match_start_sec"), "end": chunk.get("best_match_end_sec"),
+                "caption": (best or {}).get("caption") or " ".join((chunk.get("reasoning_content") or "").split())[:700],
+                "segment_number": chunk.get("best_segment_number"),
+            })
+        return {"query": module["query"], "moments": moments, "ms": round((time.perf_counter() - started) * 1000)}
+
+    def open_stream(self, source, byte_range):
+        """Open the upstream clip stream. The token stays server-side."""
+        headers = {"Range": byte_range} if byte_range else {}
+        for attempt in range(2):
+            token = self.token(force=attempt == 1)
+            upstream = f"{VSS_URL}/api/v1/videos/stream?source={quote(source, safe='')}&token={quote(token, safe='')}"
+            try:
+                return urllib.request.urlopen(urllib.request.Request(upstream, headers=headers), timeout=120)
+            except urllib.error.HTTPError as exc:
+                if exc.code != 401 or attempt:
+                    raise RuntimeError("Clip playback failed.") from exc
+            except urllib.error.URLError as exc:
+                raise RuntimeError("Clip playback failed.") from exc
+        raise RuntimeError("Clip playback failed.")
 
 
 ARCHIVE = Archive()
+CATALOG = load_catalog()
+DEV_FIXTURE = False  # set only by tools/dev_fixture.py for local layout work; the UI then shows a banner
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -265,46 +393,88 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("Expected a JSON object.")
         return data
 
+    def _source(self, query):
+        source = (query.get("source") or [""])[0]
+        if not safe_source(source, VSS_USERNAME):
+            self._json(400, {"error": "That clip is outside this archive."})
+            return None
+        return source
+
     def do_GET(self):
         parsed = urlparse(self.path)
+        query = parse_qs(parsed.query)
         if parsed.path == "/health":
             self._json(200, {"ok": True})
-            return
-        if parsed.path == "/api/sites":
+        elif parsed.path == "/api/status":
+            self._json(200, {
+                "mode": "dev-fixture" if DEV_FIXTURE else "workshop",
+                "archive": ARCHIVE.configured,
+                "wandb": WANDB.configured,
+                "model": WANDB.model,
+                "default_camera": DEFAULT_CAMERA,
+            })
+        elif parsed.path == "/api/sites":
             self._guard(lambda: self._json(200, ARCHIVE.sites()))
-            return
-        if parsed.path == "/api/detections":
-            self._guard(lambda: self._detections(parse_qs(parsed.query)))
-            return
-        if parsed.path == "/api/stream":
-            self._stream(parse_qs(parsed.query))
-            return
-        if parsed.path in STATIC:
-            self._file(STATIC[parsed.path])
-            return
-        self._json(404, {"error": "Not found."})
+        elif parsed.path == "/api/feeds":
+            camera_id = (query.get("camera_id") or [DEFAULT_CAMERA])[0]
+            self._guard(lambda: self._json(200, ARCHIVE.feeds(camera_id)))
+        elif parsed.path == "/api/segment":
+            source = self._source(query)
+            if source:
+                self._guard(lambda: self._json(200, ARCHIVE.segment(source)))
+        elif parsed.path == "/api/detections":
+            source = self._source(query)
+            if source:
+                self._guard(lambda: self._json(200, ARCHIVE.detections(source)))
+        elif parsed.path == "/api/calls":
+            self._json(200, {"calls": list(CALLS)})
+        elif parsed.path == "/api/stream":
+            source = self._source(query)
+            if source:
+                self._stream(source)
+        elif parsed.path in STATIC:
+            self._file(*STATIC[parsed.path])
+        else:
+            self._json(404, {"error": "Not found."})
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path != "/api/search":
-            self._json(404, {"error": "Not found."})
-            return
         try:
             body = self._read_json()
         except (ValueError, json.JSONDecodeError):
-            self._json(400, {"error": "Send a short text requirement."})
+            self._json(400, {"error": "Send a short JSON request."})
             return
-        query = " ".join(str(body.get("query") or "").split())
-        camera_id = str(body.get("camera_id") or "")
-        if not query or len(query) > 400:
-            self._json(400, {"error": "Describe what to watch in one short sentence."})
-            return
-        if camera_id and (camera_id not in CAMERA_INFO or len(camera_id) > 80):
-            # Unknown ids are still accepted when they match the archive charset.
-            if not camera_id.replace("-", "").replace("_", "").isalnum() or len(camera_id) > 80:
-                self._json(400, {"error": "Unknown camera."})
+        if parsed.path == "/api/compile":
+            text = " ".join(str(body.get("text") or "").split())
+            if not text or len(text) > 400:
+                self._json(400, {"error": "Describe what to watch in one or two sentences (up to 400 characters)."})
                 return
-        self._guard(lambda: self._json(200, ARCHIVE.search(query, camera_id)))
+            self._guard(lambda: self._compile(text))
+        elif parsed.path == "/api/evidence":
+            module = next((m for m in CATALOG["modules"] if m["id"] == body.get("module")), None)
+            camera_id = str(body.get("camera_id") or DEFAULT_CAMERA)
+            if not module or module["kind"] != "retrieval":
+                self._json(400, {"error": "That module does not search the archive."})
+                return
+            score = (body.get("params") or {}).get("min_score", module["params"]["min_score"]["default"])
+            spec = module["params"]["min_score"]
+            if isinstance(score, bool) or not isinstance(score, (int, float)) or not spec["min"] <= score <= spec["max"]:
+                self._json(400, {"error": f"Minimum match score must be between {spec['min']} and {spec['max']}."})
+                return
+            self._guard(lambda: self._json(200, ARCHIVE.evidence(module, {"min_score": score}, camera_id)))
+        else:
+            self._json(404, {"error": "Not found."})
+
+    def _compile(self, text):
+        started = time.perf_counter()
+        service = "Dev fixture" if DEV_FIXTURE else "W&B Inference"  # never log a stub as a sponsor call
+        try:
+            result = WANDB.compile(text, CATALOG)
+        except RuntimeError as exc:
+            record(service, "chat/completions", started, False, str(exc))
+            raise
+        record(service, "chat/completions", started, True, result["model"])
+        self._json(200, result)
 
     def _guard(self, action):
         try:
@@ -314,68 +484,26 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self._json(502, {"error": "The archive request failed."})
 
-    def _detections(self, query):
-        source = (query.get("source") or [""])[0]
-        if not safe_source(source, VSS_USERNAME):
-            self._json(400, {"error": "That clip is outside this archive."})
-            return
-        path = "/api/v1/videos/detections?" + urlencode({"source": source})
-        try:
-            payload = ARCHIVE.call("GET", path, timeout=40)
-        except RuntimeError as exc:
-            message = str(exc).lower()
-            if "404" in message or "not found" in message:
-                self._json(200, {"frames": [], "object_classes": [], "unavailable": True})
-                return
-            raise
-        self._json(200, trim_detections(payload))
-
-    def _file(self, name):
+    def _file(self, name, kind):
         path = ROOT / name
         if not path.is_file():
             self._json(404, {"error": "Missing application file."})
             return
-        kind = "text/html" if name.endswith(".html") else "text/css" if name.endswith(".css") else "text/javascript"
         self._send(200, path.read_bytes(), f"{kind}; charset=utf-8")
 
-    def _stream(self, query):
-        source = (query.get("source") or [""])[0]
-        if not safe_source(source, VSS_USERNAME):
-            self._json(400, {"error": "That clip is outside this archive."})
-            return
+    def _stream(self, source):
         try:
-            token = ARCHIVE.token()
+            response = ARCHIVE.open_stream(source, self.headers.get("Range"))
         except RuntimeError as exc:
             self._json(502, {"error": str(exc)})
-            return
-        upstream = f"{VSS_URL}/api/v1/videos/stream?source={quote(source, safe='')}&token={quote(token, safe='')}"
-        headers = {}
-        if self.headers.get("Range"):
-            headers["Range"] = self.headers["Range"]
-        request = urllib.request.Request(upstream, headers=headers)
-        try:
-            response = urllib.request.urlopen(request, timeout=120)
-        except urllib.error.HTTPError as exc:
-            if exc.code == 401:
-                try:
-                    token = ARCHIVE.token(force=True)
-                    upstream = f"{VSS_URL}/api/v1/videos/stream?source={quote(source, safe='')}&token={quote(token, safe='')}"
-                    response = urllib.request.urlopen(urllib.request.Request(upstream, headers=headers), timeout=120)
-                except Exception:
-                    self._json(502, {"error": "Clip playback failed."})
-                    return
-            else:
-                self._json(502, {"error": "Clip playback failed."})
-                return
-        except urllib.error.URLError:
-            self._json(502, {"error": "Clip playback failed."})
             return
         status = getattr(response, "status", 200)
         self.send_response(status)
         content_type = response.headers.get("Content-Type") or "video/mp4"
         if "octet-stream" in content_type or source.endswith(".mp4"):
-            content_type = "video/mp4"
+            content_type = "video/mp4"  # upstream labels clips binary/octet-stream
         self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "private, max-age=3600")
         for header in ("Content-Length", "Content-Range", "Accept-Ranges"):
             value = response.headers.get(header)
             if value:
@@ -395,7 +523,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    print(f"Replay workshop board on http://{HOST}:{PORT}  archive={'configured' if ARCHIVE.configured else 'missing'}  "
+          f"wandb={'configured' if WANDB.configured else 'missing'}", flush=True)
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":

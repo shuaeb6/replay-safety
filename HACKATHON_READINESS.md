@@ -46,4 +46,4 @@ No invented answers should be added to the handoff. Team registration, assigned 
 
 ## Product plan
 
-Preserve the existing offline demo. Build an explicitly separate workshop path around one narrow safety-review use case and real evidence. Avoid expanding to PPE, fire, theft, RL, and multiple industries before the sponsor-backed path works. See the priority update in `CLAUDE_HANDOFF.md` for implementation tasks and acceptance criteria.
+Preserve the existing offline demo. Build an explicitly separate workshop path around one narrow safety-review use case and real evidence. Avoid expanding to PPE, fire, theft, RL, and multiple industries before the sponsor-backed path works.

@@ -20,3 +20,7 @@ venv/
 # Offline-demo footage is downloaded from its source: python3 tools/fetch_footage.py
 demo-footage/factory-cctv/*.mp4
 demo-footage/factory-cctv/*.part
+# Local-only coding-assistant prompts and handoffs (not published)
+CLAUDE_HANDOFF.md
+WORKSHOP_HANDOFF.md
+.claude/

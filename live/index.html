@@ -3,93 +3,125 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Replay — Safety workspace</title>
+<title>Replay Safety Review</title>
+<script>
+  // Served under an Ingress prefix (/app). Relative URLs need a trailing slash to resolve inside it.
+  (function () {
+    var p = location.pathname;
+    if (!p.endsWith('/') && p.split('/').pop().indexOf('.') === -1) location.replace(p + '/' + location.search + location.hash);
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@500;600;700;800&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<aside class="rail">
-  <a class="brand" href="/" aria-label="Replay home">r<span>•</span></a>
-  <button class="rail-button active" title="Camera workspace" aria-label="Camera workspace" id="workspaceNav"></button>
-  <button class="rail-button" title="Evidence" aria-label="Open evidence" id="evidenceNav"></button>
-  <div class="rail-bottom"><span class="avatar">RS</span></div>
-</aside>
-<div class="shell">
-<header>
-  <div class="breadcrumb">Workspace <span>/</span> <strong>Indexed archive</strong></div>
-  <div class="header-right"><span class="demo-dot"></span> Search over indexed video <button class="text-button" id="aboutButton">About this view ↗</button></div>
+<header class="topbar">
+  <div class="brand"><span class="mark" aria-hidden="true"></span>replay</div>
+  <div class="crumb"><span id="siteName">Warehouse 3</span><span class="sep">/</span><span id="siteNote">Indexed archive</span></div>
+  <div class="mode" id="modePill" role="status"><i></i><span>Connecting to services…</span></div>
+  <ul class="services" id="services" aria-label="Services used in this session"></ul>
+  <button class="link" id="aboutButton" type="button">About the data</button>
 </header>
-<main>
-  <div class="page-heading">
-    <div>
-      <div class="eyebrow">SAFETY WORKSPACE</div>
-      <h1>A clearer view of the floor.</h1>
-      <p>Choose a camera. Describe what to watch. Replay the moments the archive already indexed.</p>
+
+<div class="banner" id="devBanner" hidden>Development fixture: local factory clips and generated boxes for layout work only. Not real inference.</div>
+
+<main class="layout">
+  <section class="floor" aria-label="Cameras and replay">
+    <div class="wall-head">
+      <div>
+        <h2>Cameras</h2>
+        <p class="sub" id="wallNote">Loading indexed feeds…</p>
+      </div>
+      <div class="running" aria-live="polite">
+        <span class="running-n" id="runningCount">2</span>
+        <span class="running-label">modules<br>running</span>
+        <ul class="layers" id="layerList"></ul>
+      </div>
     </div>
-    <button class="button secondary" id="resetButton">Reset workspace</button>
-  </div>
-  <div class="workspace">
-    <section class="monitor">
-      <div class="section-heading"><h2>Your cameras <span class="count" id="cameraCount">…</span></h2><span class="subtle" id="archiveNote">Loading the archive</span></div>
-      <div id="cameraGrid" class="camera-grid"></div>
-      <div class="viewer">
-        <div class="viewer-heading">
-          <div><h2 id="viewerName">Select a camera</h2><span class="subtle" id="viewerLocation"></span></div>
-          <div class="segmented" role="group" aria-label="Search mode">
-            <button id="scenarioButton" class="selected" aria-pressed="true">This search</button>
-            <button id="referenceButton" aria-pressed="false">Quieter clip</button>
-          </div>
+    <div class="wall" id="wall"></div>
+
+    <div class="stage-wrap">
+      <div class="stage" id="stage">
+        <video id="videoA" playsinline muted preload="auto"></video>
+        <video id="videoB" playsinline muted preload="auto" hidden></video>
+        <canvas id="overlay" aria-hidden="true"></canvas>
+        <div class="stage-top">
+          <span class="tag" id="feedTag">—</span>
+          <span class="tag dim" id="sourceTag">Indexed replay</span>
+          <span class="clock" id="clock">SEG — · 00:00.0</span>
         </div>
-        <div class="video-stage">
-          <video id="mainVideo" playsinline preload="metadata"></video>
-          <div class="video-top"><span class="video-badge">INDEXED REPLAY</span><span id="analysisBadge" class="video-badge">No moment selected</span></div>
-          <svg id="overlay" viewBox="0 0 1920 1080" preserveAspectRatio="none" aria-hidden="true"></svg>
-          <div class="event-toast" id="eventToast" hidden><span class="alert-indicator"></span><div><strong id="eventTitle"></strong><small id="eventMeta">Indexed caption · detector boxes when available</small></div></div>
-          <div class="empty-video" id="videoError" hidden>This clip could not be played.</div>
+        <div class="wipe" id="wipe" hidden>
+          <span class="wipe-label left" id="beforeLabel">Before · 2 modules</span>
+          <span class="wipe-label right" id="afterLabel">After</span>
+          <button class="wipe-handle" id="wipeHandle" type="button" aria-label="Drag to compare before and after the rule"><span></span></button>
         </div>
-        <div class="playback">
-          <button id="playButton" class="icon-button" aria-label="Play footage"></button>
-          <span id="timeLabel" class="time">0:00 / 0:00</span>
-          <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Video position">
-          <button id="speedButton" class="speed">1×</button>
-          <button id="restartButton" class="icon-button" aria-label="Restart footage"></button>
+        <div class="toast" id="toast" hidden><i></i><div><strong id="toastTitle"></strong><small id="toastMeta"></small></div></div>
+        <p class="caption" id="caption" hidden><span class="caption-src">Cosmos Reason</span><span id="captionText"></span></p>
+        <div class="stage-empty" id="stageEmpty"><strong id="emptyTitle">Loading the archive…</strong><span id="emptyText"></span></div>
+        <div class="draw-hint" id="drawHint" hidden>
+          <strong>Draw the restricted lane</strong>
+          <span>Click the corners on the floor. Press Enter or click the first point to finish.</span>
+          <div><button type="button" id="drawCancel" class="ghost">Cancel</button><button type="button" id="drawUndo" class="ghost">Undo point</button></div>
         </div>
-        <div class="viewer-foot"><span><i class="small-dot"></i><span id="viewerStatus">Choose a camera and describe what to watch.</span></span><button id="overlayToggle" class="text-button" aria-pressed="true">Boxes on</button></div>
       </div>
-      <section class="evidence-section" id="evidenceSection">
-        <div class="section-heading"><h2>Evidence <span id="eventCount" class="count">0</span></h2><button class="text-button" id="clearEvidence">Clear</button></div>
-        <div id="evidenceList"></div>
-      </section>
+
+      <div class="transport">
+        <button class="icon" id="playButton" type="button" aria-label="Pause"></button>
+        <span class="time" id="timeLabel">0:00.0 / 0:00.0</span>
+        <div class="lanes" id="lanes">
+          <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Replay position">
+          <div class="lane-rows" id="laneRows"></div>
+        </div>
+        <button class="chip-btn" id="laneButton" type="button" hidden>Redraw lane</button>
+      </div>
+    </div>
+
+    <section class="moments" aria-labelledby="momentsHead">
+      <div class="moments-head">
+        <h2 id="momentsHead">Flagged moments <span class="count" id="momentCount">0</span></h2>
+        <p class="sub" id="compareNote">Before: people are boxed, nothing is flagged.</p>
+      </div>
+      <div class="moment-grid" id="moments"></div>
     </section>
-    <aside class="rule-panel">
-      <div class="panel-title"><span class="spark">✧</span><h2>What should we watch?</h2></div>
-      <p class="panel-description">Replay searches the indexed archive for this camera. It does not certify compliance.</p>
-      <form id="ruleForm">
-        <label class="sr-only" for="requirement">Safety requirement</label>
-        <textarea id="requirement" rows="4" placeholder="Forklift near a person in a warehouse aisle…"></textarea>
-        <button class="button primary" type="submit" id="searchButton">Search the archive <span>↗</span></button>
-      </form>
-      <div class="examples">
-        <span class="eyebrow">TRY A REQUIREMENT</span>
-        <button type="button" data-prompt="forklift near a person in a warehouse aisle" data-camera="sdg_warehouse_cam-2">Forklift near a person <span>↗</span></button>
-        <button type="button" data-prompt="person walking in a warehouse aisle or marked walkway" data-camera="sdg_warehouse_cam-2">Person in the aisle <span>↗</span></button>
-        <button type="button" data-prompt="person close to a moving vehicle" data-camera="">Person near a vehicle <span>↗</span></button>
+  </section>
+
+  <aside class="panel" aria-label="Rule assistant">
+    <div class="panel-head">
+      <h1>What should Replay watch?</h1>
+      <p>Describe the rule in your own words. Replay picks modules from your library and checks them against the archive.</p>
+    </div>
+    <form id="ruleForm" class="composer">
+      <label class="sr" for="requirement">Safety requirement</label>
+      <textarea id="requirement" rows="3" maxlength="400" placeholder="Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift."></textarea>
+      <div class="composer-foot">
+        <span class="hint" id="charCount">0 / 400</span>
+        <button class="send" id="sendButton" type="submit">Find modules</button>
       </div>
-      <div id="suggestion" aria-live="polite"></div>
-      <div class="honesty"><span>ⓘ</span><p><strong>Indexed search</strong>Moments come from captions and object detections already stored for these clips. A match score is similarity, not a risk rating. Boxes are detector output for the playing segment. A quieter clip is another search, not a safety clearance.</p></div>
-    </aside>
-  </div>
-  <footer>Built for the moments that matter.<span>Captions and detections from the team video archive</span></footer>
+    </form>
+    <div class="examples" id="examples">
+      <button type="button" data-prompt="Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift.">Forklift lane and proximity</button>
+      <button type="button" data-prompt="Flag anyone who stands still in one spot for 3 seconds.">Lingering for 3 s</button>
+      <button type="button" data-prompt="Alert me when workers are not wearing hard hats.">Hard hats</button>
+    </div>
+    <div class="thread" id="thread" aria-live="polite"></div>
+    <div class="library">
+      <h3>Module library</h3>
+      <ul id="library"></ul>
+    </div>
+  </aside>
 </main>
-</div>
-<div class="notification" id="notification" role="status" hidden></div>
-<dialog id="aboutDialog">
-  <button id="closeAbout" class="close" aria-label="Close">×</button>
-  <div class="eyebrow">ABOUT THIS VIEW</div>
-  <h2>Indexed footage. Visible sources.</h2>
-  <p>Replay asks the team archive for moments that match a written requirement, then plays the matching segment. Captions are model-written descriptions stored with each clip. Boxes, when shown, are object-detector output for that segment.</p>
-  <p>This is not a live camera feed, not an OSHA determination, and not proof that a scene is safe. Similarity is how closely a clip matched the words, not a calibrated probability.</p>
-  <p>The local factory demo in this repository is a separate authored preview. This view does not use those example intervals.</p>
+
+<dialog id="about">
+  <form method="dialog"><button class="close" aria-label="Close">×</button></form>
+  <h2>About the data</h2>
+  <p><strong>Footage.</strong> Indexed clips from the team's VAST archive. The warehouse and facility feeds are rendered (synthetic) scenes from the event corpus. Replay plays recorded segments; it is not a live camera.</p>
+  <p><strong>Always running.</strong> People: YOLO11 boxes recorded at ingest for every frame. Scene captions: the description Cosmos Reason wrote for each 5-second segment.</p>
+  <p><strong>Your rules.</strong> W&amp;B Inference maps your words to modules in the library; the server rejects anything outside it. Lane, lingering, and crowding rules are computed in your browser from the real person boxes. "Near a forklift" is a VAST hybrid search over captions. Its score ranks relevance; it is not a safety confidence.</p>
+  <p><strong>Limits.</strong> The detector does not box forklifts, so forklift rules rely on captions. Positions are in image space, not calibrated metres. Flagged moments are for human review, not compliance findings.</p>
 </dialog>
-<script src="client.js"></script>
+
+<div class="notice" id="notice" role="status" hidden></div>
+<script type="module" src="app.js"></script>
 </body>
 </html>
