@@ -3,7 +3,7 @@
 The JSON file is the single source of truth. Never edit the markdown or CSV by hand.
 Each row has a `settings` list. The general table shows every row.
 The by-setting view filters the same rows, for example for a chem lab.
-An optional `module` links a row to a detector module in app/rules.js.
+An optional `module` links a row to a detector module in app/rules/catalog.js.
 
 Run:    uv run scripts/build_regulations_table.py                 (write all files)
 Check:  uv run scripts/build_regulations_table.py --check         (fail if out of date)
@@ -135,7 +135,7 @@ def render_modules_summary(data):
         lines.append(render_line(cells))
     return (
         "## Detector modules\n\n"
-        "These are the modules in `app/rules.js`. A clause here has a cue that the module can flag.\n"
+        "These are the modules in `app/rules/catalog.js`. A clause here has a cue that the module can flag.\n"
         "A person must still review each flag.\n\n" + "\n".join(lines) + "\n"
     )
 

@@ -15,7 +15,7 @@ Camera attachments persist in this browser. Reset clears them. Videos are served
 
 ## Actual implementation boundary
 
-This is a functional UI demo, not a connected AI safety system. `app/rules.js` contains local keyword matching and explicit manually authored example intervals. There is no LLM, object detector, live camera ingestion, OSHA compliance certification, or automatic retraining. All demo analysis is labeled. PPE and blocked-route prompts return an unsupported-capability message.
+This is a functional UI demo, not a connected AI safety system. `app/rules/` contains local keyword matching and explicit manually authored example intervals. There is no LLM, object detector, live camera ingestion, OSHA compliance certification, or automatic retraining. All demo analysis is labeled. PPE and blocked-route prompts return an unsupported-capability message.
 
 Replace the interpreter with a validated model-produced rule specification and the event evaluator with actual timestamped inference to connect a model service. Keep the capability checks, visibility/uncertainty handling, and clear source labeling. The current walkway polygon is illustrative, not calibrated, and does not drive a real tracker.
 

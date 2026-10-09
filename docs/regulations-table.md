@@ -34,7 +34,7 @@ Retrieved 2026-10-09. Source text: eCFR for the CFR packs.
 
 ## Detector modules
 
-These are the modules in `app/rules.js`. A clause here has a cue that the module can flag.
+These are the modules in `app/rules/catalog.js`. A clause here has a cue that the module can flag.
 A person must still review each flag.
 
 | Module | ID | Clauses | Note |

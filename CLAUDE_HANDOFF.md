@@ -31,7 +31,7 @@ This is a public repository shared with friends. Make it reproducible from a fre
 - `index.html`: application structure, camera area, viewer, sidebar, evidence, and about dialog.
 - `app/style.css`: visual design and responsive breakpoints.
 - `app/main.js`: DOM rendering, camera selection, playback, rules, localStorage, suggestions, overlays, evidence, and notifications.
-- `app/rules.js`: module catalog, camera/clip mappings, keyword interpreter, capability compatibility, and illustrative event evaluator.
+- `app/rules/`: `catalog.js` (modules, camera/clip mappings), `schema.js` (rule/event contracts), `compiler.js` (keyword interpreter), `evaluator.js` (illustrative events). `app/rules.js` re-exports them.
 - `server.py`: local static server and video range responses. Development-only; do not expose the repository root on a public server.
 - `tests/rules.test.js`: interpreter, unsupported requests, thresholds, compatibility, reference-mode suppression.
 - `demo-footage/factory-cctv/`: 16 original MP4 clips.
