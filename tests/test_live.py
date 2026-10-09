@@ -45,6 +45,7 @@ class FeedTests(unittest.TestCase):
     def test_view_names(self):
         self.assertEqual(main.view_name("x_run_7_seed_9.ceiling_04.rgb_chunk_0000.mp4"), ("Ceiling 04", "Scene 7"))
         self.assertEqual(main.view_name("2025_test_Warehouse_017_Camera_01_chunk_0002.mp4"), ("Camera 01", "Part 3"))
+        self.assertTrue(main.camera_meta("replay_office_cam-1")["fixed"] is False)
 
     def test_feed_from_timeline_keeps_order_and_captions(self):
         item = {"original_video": "s3://vss-chunks/t/a.mp4", "total_segments": 2, "camera_id": "sdg_warehouse_cam-2",
@@ -73,6 +74,33 @@ class FeedTests(unittest.TestCase):
         self.assertTrue(main.safe_source("s3://vss-chunks-segments/segments/a.mp4", ""))
         self.assertFalse(main.safe_source("s3://vss-chunks-segments/../x.mp4", ""))
         self.assertFalse(main.safe_source("https://evil.example/a.mp4", ""))
+
+
+class CameraAndChecklistTests(unittest.TestCase):
+    def test_checklist_is_parsed_and_hidden_from_the_caption(self):
+        cap = "A man walks past a sign. CHECKS: running=no; entered_do_not_enter=YES; touched_fire_alarm=unclear"
+        self.assertEqual(main.parse_checks(cap), {"running": "no", "entered_do_not_enter": "yes", "touched_fire_alarm": "unclear"})
+        self.assertEqual(main.clean_caption(cap), "A man walks past a sign.")
+        self.assertEqual(main.parse_checks("No checklist here."), {})
+
+    def test_handheld_cameras_only_get_caption_modules(self):
+        handheld = {m["id"] for m in main.modules_for("replay_office_cam-1")["modules"]}
+        fixed = {m["id"] for m in main.modules_for("sdg_warehouse_cam-2")["modules"]}
+        self.assertNotIn("zone_entry", handheld)
+        self.assertIn("fire_alarm", handheld)
+        self.assertTrue({"zone_entry", "fire_alarm"} <= fixed)
+        mods, _, problems, _ = compiler.validate({"modules": [{"id": "zone_entry"}]}, main.modules_for("replay_office_cam-1"))
+        self.assertEqual(mods, [])
+
+    def test_ingest_prompt_fits_and_names_every_check(self):
+        prompt = CATALOG["ingest_prompt"]
+        self.assertLessEqual(len(prompt), 800)
+        for m in CATALOG["modules"]:
+            if m.get("check"):
+                self.assertIn(m["check"]["key"], prompt)
+
+    def test_upload_names_are_readable(self):
+        self.assertEqual(main.view_name("team-11/20261009_140512_do-not-enter.mp4")[0], "Do not enter")
 
 
 class LaneTests(unittest.TestCase):

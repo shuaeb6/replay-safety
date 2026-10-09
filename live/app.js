@@ -88,6 +88,7 @@ async function refreshServices() {
 /* ---------------- module library + running layers ---------------- */
 
 const moduleSpec = (id) => S.catalog.modules.find((m) => m.id === id);
+const isSearch = (m) => m && (m.kind === 'retrieval' || m.kind === 'caption');
 const colorOf = (id) => (moduleSpec(id) || S.catalog.baseline.find((b) => b.id === id) || {}).color || '#fff';
 
 function renderLayers(newIds = []) {
@@ -132,13 +133,13 @@ async function loadDetections(feed) {
 }
 
 function renderWall() {
-  const shown = S.feeds.slice(0, 4);
+  const shown = S.feeds.slice(0, 8);
   $('wall').innerHTML = shown.map((f, i) => `
     <button class="tile ${S.feed?.id === f.id ? 'selected' : ''}" type="button" data-feed="${i}" aria-pressed="${S.feed?.id === f.id}" aria-label="${esc(f.name)} ${esc(f.subtitle)}">
       <video muted loop playsinline autoplay preload="auto" src="${streamUrl(f.segments[0].source)}"></video>
       <canvas></canvas>
       <span class="rec">REPLAY</span>
-      ${flagCount(f) ? `<span class="flag">${flagCount(f)} flagged</span>` : ''}
+      ${flagCount(f) ? `<span class="flag">${flagCount(f)} violation${flagCount(f) === 1 ? '' : 's'}</span>` : ''}
       <span class="tile-meta"><strong>${esc(f.name)}</strong><small>${esc(f.subtitle)}</small></span>
     </button>`).join('') || '<div class="empty">No indexed feeds were returned for this camera.</div>';
   document.querySelectorAll('[data-feed]').forEach((b) => { b.onclick = () => selectFeed(S.feeds[Number(b.dataset.feed)]); });
@@ -224,7 +225,7 @@ async function selectFeed(feed, at = 0) {
   playSeg(0, 0);
   if (at) seekFeed(at);
   $('feedTag').textContent = `${feed.name}${feed.subtitle ? ` · ${feed.subtitle}` : ''}`;
-  $('sourceTag').textContent = feed.synthetic ? 'Indexed replay · synthetic footage' : 'Indexed replay';
+  $('sourceTag').textContent = feed.synthetic ? 'Indexed replay · synthetic footage' : feed.fixed === false ? 'Indexed replay · team-recorded clip' : 'Indexed replay';
   document.querySelectorAll('.tile').forEach((t) => {
     const on = S.feeds[Number(t.dataset.feed)]?.id === feed.id;
     t.classList.toggle('selected', on);
@@ -250,7 +251,7 @@ async function loadCaption(seg) {
 
 function recompute(feed) {
   const frames = S.det.get(feed.id) || [];
-  const rules = S.attached.map((a) => ({...a, kind: moduleSpec(a.id).kind})).filter((r) => r.kind !== 'retrieval');
+  const rules = S.attached.map((a) => ({...a, kind: moduleSpec(a.id).kind})).filter((r) => !isSearch(r));
   S.events.set(feed.id, rules.length ? computeEvents(frames, rules, S.zones[feed.id]?.points) : []);
 }
 
@@ -291,7 +292,7 @@ function renderLanes() {
   for (const a of S.attached) {
     const m = moduleSpec(a.id);
     let marks = '';
-    if (m.kind === 'retrieval') {
+    if (isSearch(m)) {
       marks = (S.retrieval.get(a.id) || []).filter((x) => x.feed.id === feed.id)
         .map((x) => `<button type="button" data-seek="${x.start}" title="VAST match ${x.score}" style="left:${pct(x.start)};width:${pct(x.end - x.start)}"></button>`).join('');
     } else {
@@ -319,7 +320,7 @@ function allMoments() {
     const m = moduleSpec(id);
     for (const x of list) {
       out.push({key: `${id}:${x.source}`, module: m, feed: x.feed, at: x.start, start: x.start, end: x.end, source: x.source,
-        why: x.caption, basis: `VAST match ${x.score.toFixed(2)} · relevance, not confidence`});
+        why: x.caption, basis: `${x.basis ? `${x.basis} · ` : ''}VAST match ${x.score.toFixed(2)} (relevance, not confidence)`});
     }
   }
   return out;
@@ -432,7 +433,9 @@ function render(now = 0) {
   const divider = S.wipeOn ? r.x + r.w * S.wipe : cw + 1;
   const events = S.wipeOn ? activeEvents(S.events.get(feed.id) || [], t) : [];
   const seg = feed.segments[S.seg];
-  const retrievalHit = S.wipeOn ? [...S.retrieval.entries()].map(([id, list]) => ({id, hit: list.find((x) => x.source === seg?.source)})).find((x) => x.hit) : null;
+  const searchHits = S.wipeOn ? [...S.retrieval.entries()].map(([id, list]) => ({id, hit: list.find((x) => x.source === seg?.source)})).filter((x) => x.hit) : [];
+  const retrievalHit = searchHits[0] || null;
+  const violated = [...new Set([...events.map((e) => e.module), ...searchHits.map((h) => h.id)])];
 
   // Before: baseline layers only.
   ctx.save(); ctx.beginPath(); ctx.rect(0, 0, divider, ch); ctx.clip();
@@ -456,28 +459,45 @@ function render(now = 0) {
       if (hitEvent) {
         const m = moduleSpec(hitEvent.module);
         drawBox(ctx, r, b.box, m.color, 3.2, `${m.name} · ${(t - hitEvent.start).toFixed(1)} s`);
+      } else if (retrievalHit) {
+        drawBox(ctx, r, b.box, colorOf(retrievalHit.id), 3, `person in flagged clip ${b.conf.toFixed(2)}`);
       } else drawBox(ctx, r, b.box, 'rgba(231,236,233,.85)', 1.6, `person ${b.conf.toFixed(2)}`);
     });
     const crowd = events.find((e) => e.module === 'crowding');
     if (crowd) tagLabel(ctx, `Crowding · ${boxes.length} people`, r.x + 12, r.y + r.h - 70, colorOf('crowding'), '#0d1512');
-    if (retrievalHit) {
-      const color = colorOf(retrievalHit.id);
-      ctx.strokeStyle = color; ctx.lineWidth = 4;
-      ctx.strokeRect(Math.max(divider, r.x) + 2, r.y + 2, r.x + r.w - Math.max(divider, r.x) - 4, r.h - 4);
+    if (violated.length) {
+      // Pulsing frame and corner brackets around the After side while a rule is violated.
+      const color = colorOf(violated[0]);
+      const x0 = Math.max(divider, r.x) + 3, y0 = r.y + 3, x1 = r.x + r.w - 3, y1 = r.y + r.h - 3;
+      ctx.globalAlpha = 0.55 + 0.45 * Math.sin(performance.now() / 260);
+      ctx.strokeStyle = color; ctx.lineWidth = 5;
+      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+      ctx.globalAlpha = 1; ctx.lineWidth = 7; ctx.lineCap = 'round';
+      const k = Math.min(46, (x1 - x0) / 4);
+      for (const [cx, cy, dx, dy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]) {
+        ctx.beginPath(); ctx.moveTo(cx + dx * k, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy + dy * k); ctx.stroke();
+      }
+      ctx.lineCap = 'butt';
     }
     ctx.restore();
   }
 
   if (S.drawing) drawZone(ctx, r, S.drawing, colorOf('zone_entry'), false);
 
-  // Toast: the newest active rule on the After side.
-  const current = events.at(-1);
+  // Violation banner, centred on the After side.
   const toast = $('toast');
-  if (current || retrievalHit) {
-    const m = moduleSpec(current ? current.module : retrievalHit.id);
-    toast.style.setProperty('--c', m.color);
-    $('toastTitle').textContent = m.name;
-    $('toastMeta').textContent = current ? `Flagged at ${fmt(current.trigger)} · YOLO11 boxes` : `Caption match ${retrievalHit.hit.score.toFixed(2)} · VAST search`;
+  if (violated.length) {
+    const mods = violated.map(moduleSpec);
+    toast.style.setProperty('--c', mods[0].color);
+    $('toastTitle').textContent = mods.map((m) => m.name).join(' · ');
+    const current = events.at(-1);
+    $('toastMeta').textContent = current && current.module === violated[0]
+      ? `Flagged at ${fmt(current.trigger)} · computed from YOLO11 boxes`
+      : retrievalHit?.hit.confirmed ? `Cosmos Reason checklist: ${retrievalHit.hit.basis.split(': ').pop().replace(/_/g, ' ')} · review the clip`
+      : `Caption match ${retrievalHit.hit.score.toFixed(2)} · VAST search · review the clip`;
+    const left = Math.max(divider, r.x), width = r.x + r.w - left;
+    toast.style.left = `${left + width / 2}px`;
+    toast.style.maxWidth = `${Math.max(220, width - 28)}px`;
     toast.hidden = false;
   } else toast.hidden = true;
 
@@ -699,7 +719,7 @@ async function submit(text) {
   $('sendButton').disabled = true;
   let result;
   try {
-    result = await post('api/compile', {text});
+    result = await post('api/compile', {text, camera_id: S.camera});
   } catch (err) {
     $('steps').innerHTML = stepHtml('fail', 'Reading the requirement', 'W&B Inference');
     $('replyBody').innerHTML = `<div class="error"><strong>No modules were attached.</strong> ${esc(err.message)} Replay does not guess rules without the model.</div>`;
@@ -714,7 +734,7 @@ async function submit(text) {
     const m = moduleSpec(mod.id);
     const inputs = Object.entries(m.params).map(([k, p]) =>
       `<label>${esc(p.label)} <span><input type="number" id="p-${m.id}-${k}" data-mod="${m.id}" data-param="${k}" min="${p.min}" max="${p.max}" step="${p.step}" value="${mod.params[k]}" required> ${esc(p.unit)}</span></label>`).join('');
-    return `<div class="mod-card" style="--c:${m.color}"><header><i></i><strong>${esc(m.name)}</strong><span class="kind">${esc(m.kind === 'retrieval' ? 'archive search' : 'computed')}</span></header>
+    return `<div class="mod-card" style="--c:${m.color}"><header><i></i><strong>${esc(m.name)}</strong><span class="kind">${esc(m.kind === 'retrieval' ? 'archive search' : m.kind === 'caption' ? 'cosmos checklist' : 'computed')}</span></header>
       ${mod.reason ? `<div class="quote">${esc(mod.reason)}</div>` : ''}${inputs}<div class="basis">${esc(m.evidence)}</div></div>`;
   }).join('');
   const unsupported = result.unsupported.map((u) => `<div class="unsupported"><strong>Not available: ${esc(u.topic)}</strong><span>${esc(u.why)}</span></div>`).join('');
@@ -744,7 +764,7 @@ async function attach_(mods) {
   recomputeAll();
   sweepWipe();
   if (ids.includes('zone_entry')) proposeLanes();
-  for (const c of chosen.filter((c) => moduleSpec(c.id).kind === 'retrieval')) {
+  for (const c of chosen.filter((c) => isSearch(moduleSpec(c.id)))) {
     const m = moduleSpec(c.id);
     $('steps').insertAdjacentHTML('beforeend', stepHtml('run', `Searching the archive for "${m.name.toLowerCase()}"`, 'VAST VSS'));
     const li = $('steps').lastElementChild;
@@ -763,21 +783,108 @@ async function attach_(mods) {
 $('ruleForm').addEventListener('submit', (e) => { e.preventDefault(); submit($('requirement').value); });
 $('requirement').addEventListener('input', () => { $('charCount').textContent = `${$('requirement').value.length} / 400`; });
 $('requirement').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit($('requirement').value); } });
-document.querySelectorAll('[data-prompt]').forEach((b) => {
-  b.onclick = () => {
-    const box = $('requirement');
-    box.value = b.dataset.prompt;
-    $('charCount').textContent = `${box.value.length} / 400`;
-    document.querySelectorAll('[data-prompt]').forEach((x) => x.classList.toggle('picked', x === b));
-    box.focus();
-    box.setSelectionRange(box.value.length, box.value.length);
-  };
-});
 document.querySelectorAll('[data-view]').forEach((b) => { b.onclick = () => setView(b.dataset.view); });$('playButton').onclick = () => setPlaying(!S.playing);
 $('scrub').addEventListener('input', (e) => { if (S.feed) seekFeed((Number(e.target.value) / 1000) * S.feed.duration); });
 $('aboutButton').onclick = () => $('about').showModal();
 
+/* ---------------- examples + cameras ---------------- */
+
+const EXAMPLES = {
+  fixed: [
+    'Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift.',
+    'Tell me when a person stays inside the forklift lane for 2 seconds.',
+    'Show me every moment where someone is close to a forklift.',
+    'Flag anyone who stands still in one spot for 3 seconds.',
+    'Alert me if more than 2 people are in view for over a second.',
+    'Watch the forklift lane, flag anyone lingering for 3 seconds, and warn me when the area gets crowded.',
+    'Alert me when workers are not wearing hard hats.',
+  ],
+  handheld: [
+    'Flag anyone who goes past a DO NOT ENTER sign.',
+    'Alert me if anyone runs indoors.',
+    'Warn me if someone moves a table marked DO NOT MOVE.',
+    'Alert me if someone touches the fire alarm.',
+    'Watch for do-not-enter areas, running indoors, and anyone touching the fire alarm.',
+    'Flag non-staff going into the office.',
+    "It's lunchtime. Tell me if our pizza still hasn't arrived.",
+    "Alert me when a man goes into the women's restroom.",
+  ],
+};
+
+function renderExamples() {
+  const list = EXAMPLES[S.cameraFixed === false ? 'handheld' : 'fixed'];
+  $('examples').innerHTML = '<span class="examples-head">Try a requirement · click to fill</span>'
+    + list.map((t) => `<button type="button" data-prompt="${esc(t)}">${esc(t)}</button>`).join('');
+  document.querySelectorAll('[data-prompt]').forEach((b) => {
+    b.onclick = () => {
+      const box = $('requirement');
+      box.value = b.dataset.prompt;
+      $('charCount').textContent = `${box.value.length} / 400`;
+      document.querySelectorAll('[data-prompt]').forEach((x) => x.classList.toggle('picked', x === b));
+      box.focus();
+      box.setSelectionRange(box.value.length, box.value.length);
+    };
+  });
+  $('requirement').placeholder = list[0];
+}
+
+async function loadCameras() {
+  try {
+    const sites = await api('api/sites');
+    const cams = (sites.cameras || []).filter((c) => c.segments);
+    if (!cams.some((c) => c.id === S.camera)) cams.unshift({id: S.camera, name: S.camera, place: '', fixed: S.cameraFixed !== false});
+    $('cameraSelect').innerHTML = cams.map((c) => `<option value="${esc(c.id)}" ${c.id === S.camera ? 'selected' : ''}>${esc(c.name)} · ${esc(c.place || c.id)}</option>`).join('');
+    S.cameraList = cams;
+  } catch { /* the picker keeps the default camera */ }
+}
+
+function resetWorkspace() {
+  S.feeds = []; S.feed = null; S.det.clear(); S.tracks.clear(); S.events.clear(); S.retrieval.clear(); S.thumbs.clear();
+  S.attached = []; S.wipe = 1;
+  videos.forEach((v) => { v.pause(); v.removeAttribute('src'); delete v.dataset.src; v.load(); });
+  $('thread').innerHTML = '';
+  $('stageEmpty').hidden = false;
+  $('emptyTitle').textContent = 'Loading the replay…';
+  $('emptyText').textContent = '';
+  renderLayers(); setView('before'); renderMoments(); renderLanes();
+}
+
+$('cameraSelect').addEventListener('change', (e) => {
+  S.camera = e.target.value;
+  store.set('replay-camera', S.camera);
+  S.cameraFixed = (S.cameraList || []).find((c) => c.id === S.camera)?.fixed !== false;
+  resetWorkspace();
+  renderExamples();
+  loadFeeds();
+});
+
 /* ---------------- boot ---------------- */
+
+async function loadFeeds() {
+  $('wall').innerHTML = '<div class="tile skeleton"></div>'.repeat(4);
+  try {
+    const res = await api(`api/feeds?camera_id=${encodeURIComponent(S.camera)}`);
+    S.feeds = res.feeds;
+    const first = S.feeds[0];
+    $('wallNote').textContent = first
+      ? `Showing ${Math.min(8, S.feeds.length)} of ${res.available} indexed videos · ${S.camera}${first.synthetic ? ' · synthetic footage' : first.fixed === false ? ' · team-recorded handheld clips' : ''}`
+      : 'No complete indexed videos for this camera yet.';
+    if (first?.location) $('siteNote').textContent = first.location.replace(/^warehouse(\d+)$/i, 'Warehouse $1').replace(/^./, (c) => c.toUpperCase());
+    if (!first) { $('stageEmpty').hidden = false; $('emptyTitle').textContent = 'No indexed clips for this camera yet'; $('emptyText').textContent = 'Uploads appear here once the pipeline has segmented, captioned, and indexed them. That usually takes a few minutes.'; }
+  } catch (err) {
+    $('wall').innerHTML = `<div class="empty">The archive did not return feeds: ${esc(err.message)}</div>`;
+    $('emptyTitle').textContent = 'No feeds to replay';
+    $('emptyText').textContent = err.message;
+    return;
+  }
+  renderWall();
+  if (S.feeds.length) {
+    $('emptyTitle').textContent = 'Loading the replay…';
+    await selectFeed(S.feeds[0]);
+    S.feeds.slice(1, 8).forEach(loadDetections);
+  }
+}
+
 
 async function boot() {
   setPlaying(true);
@@ -788,7 +895,8 @@ async function boot() {
     $('emptyText').textContent = err.message;
     return;
   }
-  S.camera = S.status.default_camera;
+  S.camera = store.get('replay-camera', null) || S.status.default_camera;
+  S.cameraFixed = !S.camera.startsWith('replay_');
   setMode();
   renderLayers();
   renderMoments();
@@ -800,28 +908,9 @@ async function boot() {
     refreshServices();
     return;
   }
-  $('wall').innerHTML = '<div class="tile skeleton"></div>'.repeat(4);
-  try {
-    const res = await api(`api/feeds?camera_id=${encodeURIComponent(S.camera)}`);
-    S.feeds = res.feeds;
-    const first = S.feeds[0];
-    $('wallNote').textContent = first
-      ? `Showing ${Math.min(4, S.feeds.length)} of ${res.available} indexed videos · ${S.camera}${first.synthetic ? ' · synthetic footage' : ''}`
-      : 'No complete indexed videos for this camera yet.';
-    if (first?.location) $('siteName').textContent = first.location.replace(/^warehouse(\d+)$/i, 'Warehouse $1');
-  } catch (err) {
-    $('wall').innerHTML = `<div class="empty">The archive did not return feeds: ${esc(err.message)}</div>`;
-    $('emptyTitle').textContent = 'No feeds to replay';
-    $('emptyText').textContent = err.message;
-    refreshServices();
-    return;
-  }
-  renderWall();
-  if (S.feeds.length) {
-    $('emptyTitle').textContent = 'Loading the replay…';
-    await selectFeed(S.feeds[0]);
-    S.feeds.slice(1, 6).forEach(loadDetections);
-  }
+  await loadCameras();
+  renderExamples();
+  await loadFeeds();
   refreshServices();
   setInterval(refreshServices, 4000);
 }

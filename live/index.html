@@ -18,7 +18,7 @@
 <body>
 <header class="topbar">
   <div class="brand"><span class="mark" aria-hidden="true"></span>replay</div>
-  <div class="crumb"><span id="siteName">Warehouse 3</span><span class="sep">/</span><span id="siteNote">Indexed archive</span></div>
+  <div class="crumb"><label class="sr" for="cameraSelect">Camera</label><select id="cameraSelect" class="camera-select"><option>Loading cameras…</option></select><span class="sep">/</span><span id="siteNote">Indexed archive</span></div>
   <div class="mode" id="modePill" role="status"><i></i><span>Connecting to services…</span></div>
   <ul class="services" id="services" aria-label="Services used in this session"></ul>
   <button class="link" id="aboutButton" type="button">About the data</button>
@@ -64,7 +64,7 @@
           <span class="wipe-label right" id="afterLabel">After</span>
           <button class="wipe-handle" id="wipeHandle" type="button" aria-label="Drag to compare before and after the rule"><span></span></button>
         </div>
-        <div class="toast" id="toast" hidden><i></i><div><strong id="toastTitle"></strong><small id="toastMeta"></small></div></div>
+        <div class="toast" id="toast" role="alert" hidden><span class="toast-eyebrow"><i></i>Rule violated</span><strong id="toastTitle"></strong><small id="toastMeta"></small></div>
         <p class="caption" id="caption" hidden><span class="caption-src">Cosmos Reason</span><span id="captionText"></span></p>
         <div class="stage-empty" id="stageEmpty"><strong id="emptyTitle">Loading the archive…</strong><span id="emptyText"></span></div>
         <div class="draw-hint" id="drawHint" hidden>
@@ -87,7 +87,7 @@
 
     <section class="moments" aria-labelledby="momentsHead">
       <div class="moments-head">
-        <h2 id="momentsHead">Flagged moments <span class="count" id="momentCount">0</span></h2>
+        <h2 id="momentsHead">Violations for review <span class="count" id="momentCount">0</span></h2>
         <p class="sub" id="compareNote">Before: people are boxed, nothing is flagged.</p>
       </div>
       <div class="moment-grid" id="moments"></div>
@@ -108,16 +108,7 @@
       </div>
     </form>
     <div class="thread" id="thread" aria-live="polite"></div>
-    <div class="examples" id="examples">
-      <span class="examples-head">Try a requirement · click to fill</span>
-      <button type="button" data-prompt="Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift.">Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift.</button>
-      <button type="button" data-prompt="Tell me when a person stays inside the forklift lane for 2 seconds.">Tell me when a person stays inside the forklift lane for 2 seconds.</button>
-      <button type="button" data-prompt="Show me every moment where someone is close to a forklift.">Show me every moment where someone is close to a forklift.</button>
-      <button type="button" data-prompt="Flag anyone who stands still in one spot for 3 seconds.">Flag anyone who stands still in one spot for 3 seconds.</button>
-      <button type="button" data-prompt="Alert me if more than 2 people are in view for over a second.">Alert me if more than 2 people are in view for over a second.</button>
-      <button type="button" data-prompt="Watch the forklift lane, flag anyone lingering for 3 seconds, and warn me when the area gets crowded.">Watch the forklift lane, flag anyone lingering for 3 seconds, and warn me when the area gets crowded.</button>
-      <button type="button" data-prompt="Alert me when workers are not wearing hard hats.">Alert me when workers are not wearing hard hats.</button>
-    </div>
+    <div class="examples" id="examples"></div>
     <div class="library">
       <h3>Module library</h3>
       <ul id="library"></ul>

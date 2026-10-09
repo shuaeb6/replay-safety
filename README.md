@@ -76,6 +76,8 @@ cd live && HOST=127.0.0.1 PORT=8080 python3 main.py
 
 Then, in another terminal, `python3 tools/smoke_test.py http://127.0.0.1:8080/`. Deploy the `live/` folder with the official `deployment/deploy-app-no-registry` skill (ConfigMap from `live/`, Secret with `VSS_URL`, `VSS_USERNAME`, `VSS_PASSWORD`, `WANDB_API_KEY`, `WANDB_TEAM`, `WANDB_PROJECT`, `GPU_BEARER_TOKEN`), and run the smoke test against the deployed `/app/` URL.
 
+Team-recorded clips: the team uploads its own short handheld clips (do-not-enter area, office entry, running indoors, a moved DO NOT MOVE table, a fire alarm pull station, lunch not delivered) with `camera_id` `replay_office_cam-1` and the custom ingest prompt stored in `live/catalog.json` (`ingest_prompt`). That prompt asks Cosmos Reason to end each caption with a `CHECKS:` yes/no line, which the caption modules read. Handheld cameras only offer caption modules, because image-space lanes do not hold when the camera moves. Requests that depend on identity, staff status, or gender are answered as unsupported. The clips stay out of this repository.
+
 Layout work without the VM: `python3 tools/dev_fixture.py` serves the board on http://127.0.0.1:8770 with local stand-in data and a "Development fixture" banner. It is never deployed and lights no sponsor services.
 
 Tests: `npm test` (rule engine) and `python3 -m unittest discover -s tests` (validation and feed parsing).

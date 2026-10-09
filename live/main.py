@@ -72,7 +72,38 @@ CAMERA_INFO = {
     "sf_streets_cam-4": ("SF street 4", "San Francisco", "street", False),
     "sf_streets_cam-5": ("SF street 5", "San Francisco", "street", False),
 }
+CAMERA_INFO["replay_office_cam-1"] = ("Event floor", "Team-recorded · handheld", "office", False)
 CAMERA_ORDER = list(CAMERA_INFO)
+# Fixed cameras support image-space rules (lanes, lingering, crowding). Handheld clips pan and zoom, so
+# only caption-based modules apply. Team uploads use camera ids that start with "replay_".
+HANDHELD_PREFIXES = ("replay_",)
+
+
+def camera_meta(camera_id):
+    name, place, tone, synthetic = CAMERA_INFO.get(camera_id, (camera_id, "Indexed camera", "street", False))
+    return {"name": name, "place": place, "tone": tone, "synthetic": synthetic,
+            "fixed": not camera_id.startswith(HANDHELD_PREFIXES)}
+
+
+def modules_for(camera_id):
+    """Catalog copy limited to modules this camera can support."""
+    fixed = camera_meta(camera_id)["fixed"]
+    catalog = dict(CATALOG)
+    catalog["modules"] = [m for m in CATALOG["modules"] if m.get("cameras", "any") == "any" or fixed]
+    return catalog
+
+
+def parse_checks(caption):
+    """Read the 'CHECKS: key=yes|no; ...' line that the custom ingest prompt asks Cosmos Reason to append."""
+    match = re.search(r"CHECKS?\s*:\s*(.+)", caption or "", flags=re.I)
+    if not match:
+        return {}
+    return {k.lower(): v.lower() for k, v in re.findall(r"([a-z_]+)\s*=\s*(yes|no|unclear)", match.group(1), flags=re.I)}
+
+
+def clean_caption(caption):
+    text = re.split(r"CHECKS?\s*:", caption or "", flags=re.I)[0]
+    return " ".join(text.split())[:700]
 STATIC = {
     "/": ("index.html", "text/html"),
     "/index.html": ("index.html", "text/html"),
@@ -119,8 +150,11 @@ def view_name(filename):
     if match:
         chunk = re.search(r"chunk_(\d+)", name)
         return f"Camera {match.group(1)}", f"Part {int(chunk.group(1)) + 1}" if chunk else ""
-    stem = name.rsplit("/", 1)[-1].split(".")[0]
-    return stem[:24] or "Feed", ""
+    stem = name.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    stem = re.sub(r"^\d{6,}[_-]?\d*[_-]?", "", stem)          # upload timestamp prefix
+    stem = re.sub(r"_chunk_\d+$", "", stem)
+    title = re.sub(r"[-_]+", " ", stem).strip().capitalize()
+    return title[:28] or "Feed", ""
 
 
 def feed_from_item(item, segments_bucket=""):
@@ -137,7 +171,9 @@ def feed_from_item(item, segments_bucket=""):
                 "start": float(row.get("segment_start_sec") or 0),
                 "end": float(row.get("segment_end_sec") or 0),
                 "source": row.get("source") or "",
-                "caption": " ".join((row.get("reasoning_content") or "").split())[:700],
+                "caption": clean_caption(row.get("reasoning_content")),
+                "checks": parse_checks(row.get("reasoning_content")),
+                "score": row.get("similarity_score"),
                 "objects": row.get("object_counts") or "",
             })
     elif total and original.endswith(".mp4"):
@@ -146,7 +182,7 @@ def feed_from_item(item, segments_bucket=""):
         stem = filename[:-4]
         length = float(item.get("chunk_duration_sec") or total * 5.0) / total
         for n in range(1, total + 1):
-            segments.append({"n": n, "start": (n - 1) * length, "end": n * length, "caption": "", "objects": "",
+            segments.append({"n": n, "start": (n - 1) * length, "end": n * length, "caption": "", "objects": "", "checks": {},
                              "source": f"s3://{bucket}/segments/{stem}_segment_{n:03d}_of_{total:03d}.mp4"})
     segments = [s for s in segments if safe_source(s["source"], VSS_USERNAME)]
     if not segments or (total and len(segments) != total):
@@ -159,7 +195,8 @@ def feed_from_item(item, segments_bucket=""):
         "subtitle": subtitle,
         "camera_id": camera_id,
         "location": item.get("location") or "",
-        "synthetic": CAMERA_INFO.get(camera_id, ("", "", "", False))[3],
+        "synthetic": camera_meta(camera_id)["synthetic"],
+        "fixed": camera_meta(camera_id)["fixed"],
         "duration": segments[-1]["end"],
         "segments": segments,
         "filename": filename,
@@ -271,9 +308,7 @@ class Archive:
         ordered += sorted(camera_id for camera_id in counts if camera_id not in CAMERA_ORDER)
         cameras = []
         for camera_id in ordered:
-            name, place, tone, synthetic = CAMERA_INFO.get(camera_id, (camera_id, "Indexed camera", "street", False))
-            cameras.append({"id": camera_id, "name": name, "place": place, "tone": tone,
-                            "synthetic": synthetic, "segments": counts.get(camera_id) or 0})
+            cameras.append({"id": camera_id, **camera_meta(camera_id), "segments": counts.get(camera_id) or 0})
         overview = stats.get("overview") or {}
         return {"cameras": cameras, "indexed_clips": overview.get("indexed_clips")}
 
@@ -310,7 +345,8 @@ class Archive:
 
     def segment(self, source):
         row = self.call("GET", "/api/v1/videos/metadata?" + urlencode({"source": source}))
-        return {"source": source, "caption": " ".join((row.get("reasoning_content") or "").split())[:900],
+        return {"source": source, "caption": clean_caption(row.get("reasoning_content")),
+                "checks": parse_checks(row.get("reasoning_content")),
                 "objects": row.get("object_counts") or "", "model": row.get("cosmos_model") or "",
                 "start": row.get("segment_start_sec"), "end": row.get("segment_end_sec")}
 
@@ -325,27 +361,41 @@ class Archive:
         return compact_detections(payload)
 
     def evidence(self, module, params, camera_id):
-        """Retrieval module: VAST hybrid search over Cosmos captions on one camera."""
+        """Search modules: VAST hybrid search over Cosmos captions on one camera.
+
+        'retrieval' modules keep hits at or above the score threshold. 'caption' modules read the
+        Cosmos Reason checklist in each matching segment's caption: a stated answer decides, and
+        the score threshold is used only when the caption has no checklist (or the module requires both).
+        """
         started = time.perf_counter()
-        body = {"query": module["query"], "top_k": 12, "llm_top_n": 1,
-                "min_similarity": params["min_score"], "include_public": True,
-                "metadata_filters": {"camera_id": camera_id}}
+        body = {"query": module["query"], "top_k": 20, "llm_top_n": 1,
+                "min_similarity": 0.05 if module["kind"] == "caption" else params["min_score"],
+                "include_public": True, "metadata_filters": {"camera_id": camera_id}}
         result = self.call("POST", "/api/v1/search", body, timeout=120)
+        check = module.get("check")
         moments = []
         for chunk in result.get("chunk_results") or []:
-            score = chunk.get("similarity_score") or 0
             feed = feed_from_item(chunk, _CFG.get("S3_SEGMENTS_BUCKET", ""))
-            source = chunk.get("preview_source") or ""
-            if score < params["min_score"] or not feed or not safe_source(source, VSS_USERNAME):
+            if not feed:
                 continue
-            best = next((s for s in feed["segments"] if s["source"] == source), None)
-            moments.append({
-                "feed": feed, "source": source, "score": round(score, 3),
-                "start": chunk.get("best_match_start_sec"), "end": chunk.get("best_match_end_sec"),
-                "caption": (best or {}).get("caption") or " ".join((chunk.get("reasoning_content") or "").split())[:700],
-                "segment_number": chunk.get("best_segment_number"),
-            })
-        return {"query": module["query"], "moments": moments, "ms": round((time.perf_counter() - started) * 1000)}
+            chunk_score = chunk.get("similarity_score") or 0
+            best_source = chunk.get("preview_source") or ""
+            for seg in feed["segments"]:
+                score = seg.get("score") if isinstance(seg.get("score"), (int, float)) else (chunk_score if seg["source"] == best_source else 0)
+                matched = score >= params["min_score"]
+                stated = seg.get("checks", {}).get(check["key"]) if check else None
+                if check and stated is not None:
+                    hit = stated == check["value"] and (matched or not check.get("require_match"))
+                    basis = f"Cosmos Reason checklist: {check['key']} = {stated}"
+                else:
+                    hit = matched and (seg["source"] == best_source or not check)
+                    basis = "Caption match (no checklist in this caption)" if check else "Caption match"
+                if hit:
+                    moments.append({"feed": feed, "source": seg["source"], "score": round(score, 3),
+                                    "start": seg["start"], "end": seg["end"], "caption": seg.get("caption", ""),
+                                    "segment_number": seg.get("n"), "basis": basis, "confirmed": stated is not None})
+        moments.sort(key=lambda m: (not m["confirmed"], -m["score"]))
+        return {"query": module["query"], "moments": moments[:12], "ms": round((time.perf_counter() - started) * 1000)}
 
     def open_stream(self, source, byte_range):
         """Open the upstream clip stream. The token stays server-side."""
@@ -419,6 +469,7 @@ class Handler(BaseHTTPRequestHandler):
                 "cosmos": COSMOS.configured,
                 "model": WANDB.model,
                 "default_camera": DEFAULT_CAMERA,
+                "camera": camera_meta(DEFAULT_CAMERA),
             })
         elif parsed.path == "/api/sites":
             self._guard(lambda: self._json(200, ARCHIVE.sites()))
@@ -462,11 +513,12 @@ class Handler(BaseHTTPRequestHandler):
             if not text or len(text) > 400:
                 self._json(400, {"error": "Describe what to watch in one or two sentences (up to 400 characters)."})
                 return
-            self._guard(lambda: self._compile(text))
+            camera_id = str(body.get("camera_id") or DEFAULT_CAMERA)[:80]
+            self._guard(lambda: self._compile(text, camera_id))
         elif parsed.path == "/api/evidence":
-            module = next((m for m in CATALOG["modules"] if m["id"] == body.get("module")), None)
             camera_id = str(body.get("camera_id") or DEFAULT_CAMERA)
-            if not module or module["kind"] != "retrieval":
+            module = next((m for m in modules_for(camera_id)["modules"] if m["id"] == body.get("module")), None)
+            if not module or module["kind"] not in ("retrieval", "caption"):
                 self._json(400, {"error": "That module does not search the archive."})
                 return
             score = (body.get("params") or {}).get("min_score", module["params"]["min_score"]["default"])
@@ -478,11 +530,11 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json(404, {"error": "Not found."})
 
-    def _compile(self, text):
+    def _compile(self, text, camera_id):
         started = time.perf_counter()
         service = "Dev fixture" if DEV_FIXTURE else "W&B Inference"  # never log a stub as a sponsor call
         try:
-            result = WANDB.compile(text, CATALOG)
+            result = WANDB.compile(text, modules_for(camera_id))
         except RuntimeError as exc:
             record(service, "chat/completions", started, False, str(exc))
             raise

@@ -6,7 +6,7 @@ a seekable clip stream, a W&B Inference rule compile, and a VAST evidence search
 Prints a sanitized report (segment IDs, model id, latencies) and saves it to
 .workshop/smoke.json for the sponsor-evidence report. Never prints credentials.
 
-Usage: python3 tools/smoke_test.py [BASE_URL]     default http://127.0.0.1:8080/
+Usage: python3 tools/smoke_test.py [BASE_URL] [CAMERA_ID]   default http://127.0.0.1:8080/ and the server's default camera
 """
 import json, os, sys, time, urllib.error, urllib.parse, urllib.request
 
@@ -48,7 +48,10 @@ for asset in ('', 'style.css', 'app.js', 'engine.js', 'catalog.json'):
 st, status, ms = call('api/status')
 check('status', st == 200 and status.get('archive') and status.get('wandb') and status.get('mode') == 'workshop', ms,
       mode=status.get('mode'), archive=status.get('archive'), wandb=status.get('wandb'), model=status.get('model'))
-camera = status.get('default_camera') or 'sdg_warehouse_cam-2'
+camera = (sys.argv[2] if len(sys.argv) > 2 else None) or status.get('default_camera') or 'sdg_warehouse_cam-2'
+handheld = camera.startswith('replay_')
+if handheld:
+    REQUIREMENT = 'Watch for do-not-enter areas, running indoors, and anyone touching the fire alarm.'
 
 st, feeds, ms = call(f'api/feeds?camera_id={urllib.parse.quote(camera)}')
 items = feeds.get('feeds') or [] if isinstance(feeds, dict) else []
@@ -68,17 +71,21 @@ if seg:
     check('clip stream (range)', st == 206 and 'video/mp4' in (headers or {}).get('Content-Type', ''), ms,
           status=st, content_range=(headers or {}).get('Content-Range'))
 
-st, comp, ms = call('api/compile', {'text': REQUIREMENT})
+st, comp, ms = call('api/compile', {'text': REQUIREMENT, 'camera_id': camera})
 mods = [m['id'] for m in comp.get('modules') or []] if isinstance(comp, dict) else []
 check('W&B rule compile', st == 200 and mods, ms, model=comp.get('model'), modules=mods, problems=comp.get('problems'), error=comp.get('error'))
-st, comp2, ms = call('api/compile', {'text': 'Alert me when workers are not wearing hard hats.'})
+st, comp2, ms = call('api/compile', {'text': "Alert me when a man goes into the women's restroom." if handheld else 'Alert me when workers are not wearing hard hats.', 'camera_id': camera})
 check('W&B rejects unsupported', st == 200 and not comp2.get('modules') and comp2.get('unsupported'), ms,
       unsupported=[u['topic'] for u in comp2.get('unsupported') or []])
 
-st, ev, ms = call('api/evidence', {'module': 'near_forklift', 'params': {'min_score': 0.4}, 'camera_id': camera})
+evidence_modules = [m for m in mods if m in ('do_not_enter', 'office_entry', 'running_indoors', 'moved_item', 'fire_alarm', 'food_missing')] if handheld else ['near_forklift']
+for module_id in evidence_modules or (['do_not_enter'] if handheld else ['near_forklift']):
+    st, ev, ms = call('api/evidence', {'module': module_id, 'params': {'min_score': 0.25 if handheld else 0.4}, 'camera_id': camera})
+    found = ev.get('moments') or [] if isinstance(ev, dict) else []
+    check(f'VAST evidence: {module_id}', st == 200 and found, ms, moments=len(found), error=ev.get('error') if isinstance(ev, dict) else None,
+          top=[{'clip': m['feed']['filename'], 'segment': m['source'].rsplit('/', 1)[-1], 'score': m['score'], 'basis': m.get('basis')} for m in found[:3]])
+st, ev, ms = call('api/evidence', {'module': evidence_modules[0] if evidence_modules else ('do_not_enter' if handheld else 'near_forklift'), 'params': {'min_score': 0.25 if handheld else 0.4}, 'camera_id': camera})
 moments = ev.get('moments') or [] if isinstance(ev, dict) else []
-check('VAST evidence search', st == 200 and moments, ms, moments=len(moments),
-      top=[{'segment': m['source'].rsplit('/', 1)[-1], 'score': m['score'], 'start': m['start'], 'end': m['end']} for m in moments[:3]])
 
 st, calls, ms = call('api/calls')
 services = sorted({c['service'] for c in calls.get('calls', []) if c.get('ok')}) if isinstance(calls, dict) else []

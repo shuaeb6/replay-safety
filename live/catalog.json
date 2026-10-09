@@ -1,8 +1,20 @@
 {
  "version": 1,
  "baseline": [
-  {"id": "people", "name": "People", "source": "YOLO11 · per-frame boxes", "color": "#E7ECE9", "summary": "Every person the detector boxed at ingest."},
-  {"id": "captions", "name": "Scene captions", "source": "Cosmos Reason · per 5 s segment", "color": "#9FE6C4", "summary": "What the reasoning model wrote about each segment."}
+  {
+   "id": "people",
+   "name": "People",
+   "source": "YOLO11 · per-frame boxes",
+   "color": "#E7ECE9",
+   "summary": "Every person the detector boxed at ingest."
+  },
+  {
+   "id": "captions",
+   "name": "Scene captions",
+   "source": "Cosmos Reason · per 5 s segment",
+   "color": "#9FE6C4",
+   "summary": "What the reasoning model wrote about each segment."
+  }
  ],
  "modules": [
   {
@@ -12,8 +24,21 @@
    "color": "#FFB547",
    "summary": "Flags a person whose feet stay inside the forklift lane on this camera.",
    "evidence": "Cosmos Reason proposes the lane from a camera frame; events are computed from YOLO11 person boxes. Image-space position, not calibrated distance.",
-   "requires": ["person_boxes", "zone"],
-   "params": {"dwell_seconds": {"label": "Time inside lane", "unit": "s", "min": 0.2, "max": 30, "step": 0.1, "default": 1}}
+   "requires": [
+    "person_boxes",
+    "zone"
+   ],
+   "params": {
+    "dwell_seconds": {
+     "label": "Time inside lane",
+     "unit": "s",
+     "min": 0.2,
+     "max": 30,
+     "step": 0.1,
+     "default": 1
+    }
+   },
+   "cameras": "fixed"
   },
   {
    "id": "near_forklift",
@@ -22,9 +47,21 @@
    "color": "#FF6B5B",
    "summary": "Finds segments where the scene caption describes a person close to a forklift.",
    "evidence": "VAST hybrid search over Cosmos Reason captions. The match score ranks relevance; it is not a safety confidence.",
-   "requires": ["captions"],
+   "requires": [
+    "captions"
+   ],
    "query": "a person standing or walking close to a forklift",
-   "params": {"min_score": {"label": "Minimum match score", "unit": "", "min": 0.2, "max": 0.9, "step": 0.05, "default": 0.4}}
+   "params": {
+    "min_score": {
+     "label": "Minimum match score",
+     "unit": "",
+     "min": 0.2,
+     "max": 0.9,
+     "step": 0.05,
+     "default": 0.4
+    }
+   },
+   "cameras": "any"
   },
   {
    "id": "lingering",
@@ -33,8 +70,20 @@
    "color": "#B69CFF",
    "summary": "Flags a person who stays in roughly the same spot for too long.",
    "evidence": "Computed from YOLO11 person boxes tracked across frames.",
-   "requires": ["person_boxes"],
-   "params": {"dwell_seconds": {"label": "Time without moving", "unit": "s", "min": 0.5, "max": 30, "step": 0.5, "default": 2}}
+   "requires": [
+    "person_boxes"
+   ],
+   "params": {
+    "dwell_seconds": {
+     "label": "Time without moving",
+     "unit": "s",
+     "min": 0.5,
+     "max": 30,
+     "step": 0.5,
+     "default": 2
+    }
+   },
+   "cameras": "fixed"
   },
   {
    "id": "crowding",
@@ -43,17 +92,223 @@
    "color": "#5CC8FF",
    "summary": "Flags when more people than allowed are visible at once.",
    "evidence": "Computed from YOLO11 person counts per frame.",
-   "requires": ["person_boxes"],
+   "requires": [
+    "person_boxes"
+   ],
    "params": {
-    "max_people": {"label": "People allowed", "unit": "", "min": 1, "max": 20, "step": 1, "default": 2},
-    "min_seconds": {"label": "For at least", "unit": "s", "min": 0.2, "max": 30, "step": 0.1, "default": 1}
+    "max_people": {
+     "label": "People allowed",
+     "unit": "",
+     "min": 1,
+     "max": 20,
+     "step": 1,
+     "default": 2
+    },
+    "min_seconds": {
+     "label": "For at least",
+     "unit": "s",
+     "min": 0.2,
+     "max": 30,
+     "step": 0.1,
+     "default": 1
+    }
+   },
+   "cameras": "fixed"
+  },
+  {
+   "id": "do_not_enter",
+   "name": "Do-not-enter area",
+   "kind": "caption",
+   "color": "#FF6B5B",
+   "summary": "Flags a person who goes past a DO NOT ENTER sign into a closed-off area.",
+   "evidence": "Cosmos Reason checklist in the segment caption, found with VAST search. The match score ranks relevance; it is not a safety confidence.",
+   "requires": [
+    "captions"
+   ],
+   "cameras": "any",
+   "query": "a person walks past a DO NOT ENTER sign into a closed-off area",
+   "check": {
+    "key": "entered_do_not_enter",
+    "value": "yes",
+    "require_match": false
+   },
+   "params": {
+    "min_score": {
+     "label": "Minimum match score",
+     "unit": "",
+     "min": 0.1,
+     "max": 0.9,
+     "step": 0.05,
+     "default": 0.25
+    }
+   }
+  },
+  {
+   "id": "office_entry",
+   "name": "Office entry",
+   "kind": "caption",
+   "color": "#FFB547",
+   "summary": "Flags a person walking into an office. It cannot tell whether that person is staff.",
+   "evidence": "Cosmos Reason checklist in the segment caption, found with VAST search. The match score ranks relevance; it is not a safety confidence.",
+   "requires": [
+    "captions"
+   ],
+   "cameras": "any",
+   "query": "a person walks into an office through a door or curtain marked OFFICE",
+   "check": {
+    "key": "entered_office",
+    "value": "yes",
+    "require_match": false
+   },
+   "params": {
+    "min_score": {
+     "label": "Minimum match score",
+     "unit": "",
+     "min": 0.1,
+     "max": 0.9,
+     "step": 0.05,
+     "default": 0.25
+    }
+   }
+  },
+  {
+   "id": "running_indoors",
+   "name": "Running indoors",
+   "kind": "caption",
+   "color": "#5CC8FF",
+   "summary": "Flags a person running inside the building.",
+   "evidence": "Cosmos Reason checklist in the segment caption, found with VAST search. The match score ranks relevance; it is not a safety confidence.",
+   "requires": [
+    "captions"
+   ],
+   "cameras": "any",
+   "query": "a person running indoors",
+   "check": {
+    "key": "running",
+    "value": "yes",
+    "require_match": false
+   },
+   "params": {
+    "min_score": {
+     "label": "Minimum match score",
+     "unit": "",
+     "min": 0.1,
+     "max": 0.9,
+     "step": 0.05,
+     "default": 0.25
+    }
+   }
+  },
+  {
+   "id": "moved_item",
+   "name": "Do-not-move item moved",
+   "kind": "caption",
+   "color": "#B69CFF",
+   "summary": "Flags a person moving furniture marked DO NOT MOVE.",
+   "evidence": "Cosmos Reason checklist in the segment caption, found with VAST search. The match score ranks relevance; it is not a safety confidence.",
+   "requires": [
+    "captions"
+   ],
+   "cameras": "any",
+   "query": "a person moves or pushes a table marked DO NOT MOVE",
+   "check": {
+    "key": "moved_do_not_move_item",
+    "value": "yes",
+    "require_match": false
+   },
+   "params": {
+    "min_score": {
+     "label": "Minimum match score",
+     "unit": "",
+     "min": 0.1,
+     "max": 0.9,
+     "step": 0.05,
+     "default": 0.25
+    }
+   }
+  },
+  {
+   "id": "fire_alarm",
+   "name": "Fire alarm touched",
+   "kind": "caption",
+   "color": "#FF4D8D",
+   "summary": "Flags a person touching or reaching for a fire alarm pull station.",
+   "evidence": "Cosmos Reason checklist in the segment caption, found with VAST search. The match score ranks relevance; it is not a safety confidence.",
+   "requires": [
+    "captions"
+   ],
+   "cameras": "any",
+   "query": "a person touching a red fire alarm pull station on the wall",
+   "check": {
+    "key": "touched_fire_alarm",
+    "value": "yes",
+    "require_match": false
+   },
+   "params": {
+    "min_score": {
+     "label": "Minimum match score",
+     "unit": "",
+     "min": 0.1,
+     "max": 0.9,
+     "step": 0.05,
+     "default": 0.25
+    }
+   }
+  },
+  {
+   "id": "food_missing",
+   "name": "Lunch not delivered",
+   "kind": "caption",
+   "color": "#F2C14E",
+   "summary": "Flags a food table that has no pizza when the caption describes the lunch setup.",
+   "evidence": "Cosmos Reason checklist in the segment caption, found with VAST search. The match score ranks relevance; it is not a safety confidence.",
+   "requires": [
+    "captions"
+   ],
+   "cameras": "any",
+   "query": "an empty food serving table with plates and napkins but no pizza",
+   "check": {
+    "key": "pizza_visible",
+    "value": "no",
+    "require_match": true
+   },
+   "params": {
+    "min_score": {
+     "label": "Minimum match score",
+     "unit": "",
+     "min": 0.1,
+     "max": 0.9,
+     "step": 0.05,
+     "default": 0.25
+    }
    }
   }
  ],
  "unsupported": [
-  {"topic": "PPE such as hard hats, vests, or gloves", "why": "The detector only boxes people; it does not classify protective equipment, and an occluded helmet would be unknown, not missing."},
-  {"topic": "vehicle speed or physical distance in metres", "why": "Measuring speed or distance needs calibrated camera geometry, which this archive does not provide."},
-  {"topic": "fire, smoke, spills, or blocked exits", "why": "No indexed footage or detector output covers these events."},
-  {"topic": "forklift boxes or forklift tracking", "why": "The YOLO11 COCO detector returns no forklift class on this footage; forklifts are only described in captions."}
- ]
+  {
+   "topic": "PPE such as hard hats, vests, or gloves",
+   "why": "The detector only boxes people; it does not classify protective equipment, and an occluded helmet would be unknown, not missing."
+  },
+  {
+   "topic": "vehicle speed or physical distance in metres",
+   "why": "Measuring speed or distance needs calibrated camera geometry, which this archive does not provide."
+  },
+  {
+   "topic": "fire, smoke, spills, or blocked exits",
+   "why": "No indexed footage or detector output covers these events."
+  },
+  {
+   "topic": "forklift boxes or forklift tracking",
+   "why": "The YOLO11 COCO detector returns no forklift class on this footage; forklifts are only described in captions."
+  },
+  {
+   "topic": "whether someone is staff, a visitor, or authorized",
+   "why": "Video cannot verify identity or permissions. Replay can flag that a person entered an area, for a human to check."
+  },
+  {
+   "topic": "who may use a restroom based on gender or appearance",
+   "why": "Replay does not infer gender or other personal traits from appearance. Use a do-not-enter or restricted-room rule instead."
+  }
+ ],
+ "ingest_prompt": "Describe this indoor video factually in 2 or 3 sentences: the people and what they do (walking, running, entering a door, room, or curtained area), visible signs and their text, furniture being moved, anyone touching a wall device such as a fire alarm, and food on tables. Then add one final line exactly in this form: CHECKS: running=yes|no; entered_do_not_enter=yes|no; entered_office=yes|no; moved_do_not_move_item=yes|no; touched_fire_alarm=yes|no; pizza_visible=yes|no. Answer no when it is not visible. Do not guess identity, job role, or gender."
 }

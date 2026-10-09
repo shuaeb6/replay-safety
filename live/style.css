@@ -58,7 +58,7 @@ h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
 .mark::after { content: ""; position: absolute; inset: 6px 5px 6px 8px; border-left: 8px solid var(--paper); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
 .crumb { color: var(--muted); font-size: 13px; white-space: nowrap; }
 .crumb .sep { margin: 0 8px; color: var(--faint); }
-.crumb #siteName { color: var(--ink); font-weight: 600; }
+.camera-select { font: 600 13px var(--body); color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; max-width: 260px; }
 .mode { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
 .mode i { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
 .mode.live i { background: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 18%, transparent); }
@@ -99,7 +99,7 @@ h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
 .tile small { font: 11px var(--mono); color: var(--stage-dim); }
 .tile .rec { position: absolute; top: 8px; left: 8px; display: flex; align-items: center; gap: 5px; font: 500 10px var(--mono); letter-spacing: .06em; padding: 3px 7px; border-radius: 5px; background: rgba(5, 10, 8, .6); }
 .tile .rec::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--captions); animation: blink 1.6s infinite; }
-.tile .flag { position: absolute; top: 8px; right: 8px; font: 600 10.5px var(--body); padding: 3px 7px; border-radius: 5px; background: var(--alert); color: #20100d; }
+.tile .flag { position: absolute; top: 8px; right: 8px; font: 700 10.5px var(--body); animation: blink 1.4s infinite; padding: 3px 7px; border-radius: 5px; background: var(--alert); color: #20100d; }
 @keyframes blink { 50% { opacity: .25; } }
 .tile.skeleton { animation: shimmer 1.4s infinite; background: var(--stage-2); }
 @keyframes shimmer { 50% { opacity: .55; } }
@@ -130,11 +130,16 @@ h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
 .wipe.solo .wipe-handle, .wipe.solo::before, .wipe.solo .wipe-label.left { display: none; }
 .wipe.solo .wipe-label.right { left: 14px; }
 
-.toast { position: absolute; right: 14px; top: 52px; display: flex; gap: 10px; align-items: center; padding: 10px 14px 10px 12px; border-radius: 11px; background: rgba(5, 10, 8, .8); color: var(--stage-ink); border: 1px solid var(--c, var(--alert)); max-width: 46%; backdrop-filter: blur(6px); animation: slide .3s ease-out; }
-.toast i { width: 10px; height: 10px; border-radius: 50%; background: var(--c, var(--alert)); box-shadow: 0 0 0 5px color-mix(in srgb, var(--c, var(--alert)) 25%, transparent); flex: none; }
-.toast strong { display: block; font: 700 13.5px var(--display); }
+.toast { position: absolute; top: 92px; transform: translateX(-50%); display: grid; justify-items: center; gap: 3px; text-align: center;
+  padding: 11px 20px 12px; border-radius: 14px; background: rgba(5, 10, 8, .86); color: var(--stage-ink); border: 2px solid var(--c, var(--alert));
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--c, var(--alert)) 22%, transparent), 0 18px 40px rgba(0, 0, 0, .45); backdrop-filter: blur(6px);
+  animation: slide .3s ease-out, ring 1.6s ease-in-out infinite; pointer-events: none; }
+.toast-eyebrow { display: flex; align-items: center; gap: 7px; font: 700 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--c, var(--alert)); }
+.toast-eyebrow i { width: 9px; height: 9px; border-radius: 50%; background: var(--c, var(--alert)); animation: blink 1s infinite; }
+.toast strong { font: 800 clamp(16px, 2vw, 24px)/1.15 var(--display); letter-spacing: -.4px; }
 .toast small { color: var(--stage-dim); font-size: 12px; }
-@keyframes slide { from { transform: translateY(-6px); opacity: 0; } }
+@keyframes ring { 50% { box-shadow: 0 0 0 12px color-mix(in srgb, var(--c, var(--alert)) 10%, transparent), 0 18px 40px rgba(0, 0, 0, .45); } }
+@keyframes slide { from { opacity: 0; } }
 
 .draw-hint { position: absolute; left: 14px; top: 52px; display: grid; gap: 4px; max-width: 340px; padding: 12px 14px; border-radius: 11px; background: rgba(5, 10, 8, .86); color: var(--stage-ink); border: 1px solid #ffb547; font-size: 13px; }
 .draw-hint strong { font: 700 14px var(--display); color: #ffb547; }

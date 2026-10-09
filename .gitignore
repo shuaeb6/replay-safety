@@ -24,3 +24,7 @@ demo-footage/factory-cctv/*.part
 CLAUDE_HANDOFF.md
 WORKSHOP_HANDOFF.md
 .claude/
+# Team-recorded demo footage (real people) - never publish
+hackathon_violations/
+*.MOV
+*.mov
