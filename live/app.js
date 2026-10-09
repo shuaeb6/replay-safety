@@ -30,11 +30,12 @@ const S = {
   det: new Map(), tracks: new Map(), yolo: false, captionsSeen: false,
   captions: new Map(),
   attached: [],
-  zones: store.get('replay-zones', {}),
+  zones: Object.fromEntries(Object.entries(store.get('replay-zones', {})).map(([k, v]) => [k, Array.isArray(v) ? {points: v, by: 'manual'} : v])),
+  laneBusy: new Set(),
   events: new Map(),
   retrieval: new Map(),
   thumbs: new Map(),
-  wipe: 1, wipeOn: false,
+  wipe: 1, wipeOn: false, view: 'before',
   drawing: null,
   lastT: 0,
 };
@@ -72,10 +73,11 @@ async function refreshServices() {
   const vss = last((c) => c.service === 'VAST VSS' && c.ok);
   const vssSearch = last((c) => c.service === 'VAST VSS' && c.ok && c.op === '/search');
   const wb = last((c) => c.service === 'W&B Inference' && c.ok);
+  const cosmos = last((c) => c.service === 'Cosmos Reason' && c.ok);
   const fixture = S.status?.mode === 'dev-fixture';
   const items = [
     ['VAST VSS', !fixture && vss, vssSearch ? secs(vssSearch.ms) : vss ? 'archive' : ''],
-    ['Cosmos Reason', !fixture && S.captionsSeen, 'captions'],
+    ['Cosmos Reason', !fixture && (S.captionsSeen || cosmos), cosmos ? `lane ${secs(cosmos.ms)}` : 'captions'],
     ['YOLO11', !fixture && S.yolo, 'boxes'],
     ['W&B Inference', !fixture && wb, wb ? secs(wb.ms) : ''],
   ];
@@ -106,6 +108,9 @@ function renderLayers(newIds = []) {
   ].join('');
   document.querySelectorAll('[data-remove]').forEach((b) => { b.onclick = () => detach(b.dataset.remove); });
   $('beforeLabel').textContent = `Before · ${S.catalog.baseline.length} modules`;
+  $('beforeCount').textContent = String(S.catalog.baseline.length);
+  $('afterCount').textContent = String(n);
+  $('viewCompare').disabled = $('viewAfter').disabled = !S.attached.length;
   $('afterLabel').textContent = `After · ${n} modules`;
   $('laneButton').hidden = !S.attached.some((a) => a.id === 'zone_entry');
 }
@@ -227,7 +232,7 @@ async function selectFeed(feed, at = 0) {
   });
   await loadDetections(feed);
   renderLanes();
-  if (S.attached.some((a) => a.id === 'zone_entry') && !S.zones[feed.id]) startDrawing();
+  if (S.attached.some((a) => a.id === 'zone_entry') && !S.zones[feed.id]) proposeLane(feed, vid());
 }
 
 async function loadCaption(seg) {
@@ -246,7 +251,7 @@ async function loadCaption(seg) {
 function recompute(feed) {
   const frames = S.det.get(feed.id) || [];
   const rules = S.attached.map((a) => ({...a, kind: moduleSpec(a.id).kind})).filter((r) => r.kind !== 'retrieval');
-  S.events.set(feed.id, rules.length ? computeEvents(frames, rules, S.zones[feed.id]) : []);
+  S.events.set(feed.id, rules.length ? computeEvents(frames, rules, S.zones[feed.id]?.points) : []);
 }
 
 function recomputeAll() {
@@ -259,8 +264,8 @@ function recomputeAll() {
 function detach(id) {
   S.attached = S.attached.filter((a) => a.id !== id);
   S.retrieval.delete(id);
-  if (!S.attached.length) { S.wipeOn = false; $('wipe').hidden = true; }
   renderLayers();
+  setView(S.attached.length ? S.view : 'before');
   recomputeAll();
   notify(`${moduleSpec(id).name} removed`);
 }
@@ -292,7 +297,7 @@ function renderLanes() {
     } else {
       marks = (S.events.get(feed.id) || []).filter((e) => e.module === a.id)
         .map((e) => `<button type="button" data-seek="${e.trigger}" title="${esc(m.name)} at ${fmt(e.trigger)}" style="left:${pct(e.start)};width:${pct(e.end - e.start)}"></button>`).join('');
-      if (m.kind === 'zone' && !S.zones[feed.id]) marks = '<small style="padding-left:6px;line-height:12px;font-size:10.5px">Draw a lane on this camera</small>';
+      if (m.kind === 'zone' && !S.zones[feed.id]) marks = `<small style="padding-left:6px;line-height:12px;font-size:10.5px">${S.laneBusy.has(feed.id) ? 'Cosmos Reason is finding the lane…' : 'No lane on this camera yet'}</small>`;
     }
     rows.push(`<div class="lane" style="--c:${m.color}"><span class="lane-name"><i></i>${esc(m.name)}</span><span class="lane-track">${marks}</span></div>`);
   }
@@ -400,8 +405,19 @@ function drawZone(g, r, poly, color, closed = true) {
   poly.forEach(([px, py]) => { g.fillStyle = color; g.beginPath(); g.arc(r.x + px * r.w, r.y + py * r.h, 4.5, 0, 7); g.fill(); });
 }
 
-function render() {
+// Chrome may pause muted videos that scroll off screen. Resume anything that should be playing.
+let lastNudge = 0;
+function keepPlaying(now) {
+  if (now - lastNudge < 800) return;
+  lastNudge = now;
+  const v = vid();
+  if (S.feed && S.playing && !S.drawing && v.paused && !v.ended && v.readyState >= 2) v.play().catch(() => {});
+  document.querySelectorAll('.tile video').forEach((t) => { if (t.paused && t.readyState >= 2) t.play().catch(() => {}); });
+}
+
+function render(now = 0) {
   requestAnimationFrame(render);
+  keepPlaying(now);
   const feed = S.feed;
   const dpr = window.devicePixelRatio || 1;
   const cw = canvas.clientWidth, ch = canvas.clientHeight;
@@ -426,7 +442,12 @@ function render() {
   // After: baseline plus every attached rule.
   if (S.wipeOn) {
     ctx.save(); ctx.beginPath(); ctx.rect(divider, 0, cw - divider, ch); ctx.clip();
-    if (S.attached.some((a) => a.id === 'zone_entry')) drawZone(ctx, r, S.zones[feed.id], colorOf('zone_entry'));
+    const lane = S.zones[feed.id];
+    if (S.attached.some((a) => a.id === 'zone_entry') && lane) {
+      drawZone(ctx, r, lane.points, colorOf('zone_entry'));
+      const [lx, ly] = lane.points.reduce(([ax, ay], [px, py]) => (py < ay ? [px, py] : [ax, ay]), [1, 1]);
+      tagLabel(ctx, lane.by === 'cosmos' ? 'Lane · proposed by Cosmos Reason' : 'Lane · drawn by you', Math.max(divider, r.x + lx * r.w), r.y + ly * r.h - 4, 'rgba(13,21,18,.8)', colorOf('zone_entry'));
+    }
     const hot = new Map();
     const tracks = S.tracks.get(feed.id) || [];
     for (const e of events) { const box = trackBoxAt(tracks, e.track, t); if (box) hot.set(box, e); }
@@ -515,9 +536,25 @@ function setWipe(x) {
   $('wipe').style.setProperty('--x', `${((r.x + r.w * S.wipe) / stage.clientWidth) * 100}%`);
 }
 
+function setView(view) {
+  if (!S.catalog) return;
+  if (!S.attached.length) view = 'before';
+  S.view = view;
+  for (const [id, v] of [['viewBefore', 'before'], ['viewCompare', 'compare'], ['viewAfter', 'after']]) $(id).setAttribute('aria-pressed', String(view === v));
+  S.wipeOn = view !== 'before';
+  $('wipe').hidden = !S.wipeOn;
+  $('wipe').classList.toggle('solo', view === 'after');
+  if (view === 'after') setWipe(0);
+  if (view === 'compare') setWipe(S.wipe > 0.02 && S.wipe < 0.98 ? S.wipe : 0.5);
+  const n = S.catalog.baseline.length, m = S.attached.length;
+  $('viewNote').innerHTML = !m ? 'Before: people and scene captions only. Attach a rule to compare.'
+    : view === 'before' ? `<b>Before</b>: ${n} modules. Nothing is flagged.`
+    : view === 'after' ? `<b>After</b>: ${n + m} modules, including your ${m} rule${m === 1 ? '' : 's'}.`
+    : `Drag the handle. <b>Left</b>: before (${n} modules). <b>Right</b>: after (${n + m} modules).`;
+}
+
 function sweepWipe() {
-  S.wipeOn = true;
-  $('wipe').hidden = false;
+  setView('compare');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (reduce) { setWipe(0.5); return; }
   const from = 1, to = 0.5, start = performance.now();
@@ -564,8 +601,8 @@ function finishDrawing(save) {
   $('stage').classList.remove('drawing');
   $('drawHint').hidden = true;
   if (save && pts && pts.length >= 3) {
-    S.zones[S.feed.id] = pts;
-    store.set('replay-zones', S.zones);
+    S.zones[S.feed.id] = {points: pts, by: 'manual'};
+    store.set('replay-zones', Object.fromEntries(Object.entries(S.zones).filter(([, z]) => z.by === 'manual')));
     recompute(S.feed);
     renderLanes(); renderMoments(); renderWall();
     notify(`Lane saved for ${S.feed.name}. Events are computed from the person boxes.`);
@@ -586,6 +623,62 @@ canvas.addEventListener('click', (e) => {
 $('drawCancel').onclick = () => finishDrawing(false);
 $('drawUndo').onclick = () => S.drawing?.pop();
 $('laneButton').onclick = startDrawing;
+
+/* ---------------- automatic lane (Cosmos Reason) ---------------- */
+
+function frameJpeg(video) {
+  const c = document.createElement('canvas');
+  c.width = 640; c.height = 360;
+  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.82);
+}
+
+async function waitForFrame(video, ms = 6000) {
+  const end = performance.now() + ms;
+  while (video.readyState < 2 && performance.now() < end) await new Promise((r) => setTimeout(r, 150));
+  return video.readyState >= 2;
+}
+
+function addStep(state, text, note) {
+  const steps = $('steps');
+  if (!steps) return null;
+  steps.insertAdjacentHTML('beforeend', stepHtml(state, text, note));
+  return steps.lastElementChild;
+}
+
+async function proposeLane(feed, video) {
+  if (!feed || S.zones[feed.id] || S.laneBusy.has(feed.id)) return;
+  S.laneBusy.add(feed.id);
+  renderLanes();
+  const li = addStep('run', `Finding the forklift lane on ${feed.name}`, 'Cosmos Reason');
+  try {
+    if (!(await waitForFrame(video))) throw new Error('The camera frame did not load.');
+    const res = await post('api/lane', {image: frameJpeg(video)});
+    S.zones[feed.id] = {points: res.polygon, by: 'cosmos', model: res.model, reason: res.reason};
+    recompute(feed);
+    const replaced = stepHtml('done', `Lane found on ${feed.name}`, `Cosmos · ${secs(res.ms)}`);
+    if (li) li.outerHTML = replaced;
+  } catch (err) {
+    const failed = stepHtml('fail', `${feed.name}: ${err.message}`, 'Cosmos Reason');
+    if (li) li.outerHTML = failed;
+    if (feed === S.feed && !$('drawSelf')) {
+      $('replyBody')?.insertAdjacentHTML('beforeend', '<button type="button" class="attach" id="drawSelf" style="background:transparent;color:var(--forest);border:1px solid var(--forest)">Draw the lane yourself</button>');
+      $('drawSelf').onclick = () => { $('drawSelf').remove(); startDrawing(); };
+    }
+  } finally {
+    S.laneBusy.delete(feed.id);
+    renderLanes(); renderMoments(); renderWall();
+    refreshServices();
+  }
+}
+
+async function proposeLanes() {
+  if (S.feed) await proposeLane(S.feed, vid());
+  for (const tile of document.querySelectorAll('.tile')) {
+    const feed = S.feeds[Number(tile.dataset.feed)];
+    if (feed && feed !== S.feed) await proposeLane(feed, tile.querySelector('video'));
+  }
+}
 window.addEventListener('keydown', (e) => {
   if (S.drawing && e.key === 'Enter') { e.preventDefault(); finishDrawing(true); }
   if (S.drawing && e.key === 'Escape') finishDrawing(false);
@@ -650,7 +743,7 @@ async function attach_(mods) {
   renderLayers(ids);
   recomputeAll();
   sweepWipe();
-  if (ids.includes('zone_entry') && S.feed && !S.zones[S.feed.id]) startDrawing();
+  if (ids.includes('zone_entry')) proposeLanes();
   for (const c of chosen.filter((c) => moduleSpec(c.id).kind === 'retrieval')) {
     const m = moduleSpec(c.id);
     $('steps').insertAdjacentHTML('beforeend', stepHtml('run', `Searching the archive for "${m.name.toLowerCase()}"`, 'VAST VSS'));
@@ -671,9 +764,16 @@ $('ruleForm').addEventListener('submit', (e) => { e.preventDefault(); submit($('
 $('requirement').addEventListener('input', () => { $('charCount').textContent = `${$('requirement').value.length} / 400`; });
 $('requirement').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit($('requirement').value); } });
 document.querySelectorAll('[data-prompt]').forEach((b) => {
-  b.onclick = () => { $('requirement').value = b.dataset.prompt; $('charCount').textContent = `${b.dataset.prompt.length} / 400`; submit(b.dataset.prompt); };
+  b.onclick = () => {
+    const box = $('requirement');
+    box.value = b.dataset.prompt;
+    $('charCount').textContent = `${box.value.length} / 400`;
+    document.querySelectorAll('[data-prompt]').forEach((x) => x.classList.toggle('picked', x === b));
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
+  };
 });
-$('playButton').onclick = () => setPlaying(!S.playing);
+document.querySelectorAll('[data-view]').forEach((b) => { b.onclick = () => setView(b.dataset.view); });$('playButton').onclick = () => setPlaying(!S.playing);
 $('scrub').addEventListener('input', (e) => { if (S.feed) seekFeed((Number(e.target.value) / 1000) * S.feed.duration); });
 $('aboutButton').onclick = () => $('about').showModal();
 

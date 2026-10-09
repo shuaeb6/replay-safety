@@ -10,8 +10,8 @@
    "name": "Restricted lane",
    "kind": "zone",
    "color": "#FFB547",
-   "summary": "Flags a person whose feet stay inside the lane you draw on this camera.",
-   "evidence": "Computed from YOLO11 person boxes and your drawn lane. Image-space position, not calibrated distance.",
+   "summary": "Flags a person whose feet stay inside the forklift lane on this camera.",
+   "evidence": "Cosmos Reason proposes the lane from a camera frame; events are computed from YOLO11 person boxes. Image-space position, not calibrated distance.",
    "requires": ["person_boxes", "zone"],
    "params": {"dwell_seconds": {"label": "Time inside lane", "unit": "s", "min": 0.2, "max": 30, "step": 0.1, "default": 1}}
   },

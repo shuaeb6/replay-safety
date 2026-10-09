@@ -20,6 +20,7 @@ import urllib.error
 import urllib.request
 
 from compiler import WandbCompiler, load_catalog
+from lane import LaneProposer
 
 
 def _team_config():
@@ -46,6 +47,11 @@ WANDB = WandbCompiler(
     os.environ.get("WANDB_TEAM") or _CFG.get("WANDB_TEAM", ""),
     os.environ.get("WANDB_PROJECT") or _CFG.get("WANDB_PROJECT", ""),
     os.environ.get("WANDB_MODEL") or None,
+)
+COSMOS = LaneProposer(
+    os.environ.get("COSMOS3_REASON_URL") or _CFG.get("COSMOS3_REASON_URL", ""),
+    os.environ.get("GPU_BEARER_TOKEN") or _CFG.get("GPU_BEARER_TOKEN", ""),
+    os.environ.get("COSMOS3_REASON_MODEL") or _CFG.get("COSMOS3_REASON_MODEL") or None,
 )
 DEFAULT_CAMERA = os.environ.get("REPLAY_CAMERA", "sdg_warehouse_cam-2")
 PINNED_FEEDS = [s for s in os.environ.get("REPLAY_FEEDS", "").split(",") if s.strip()]
@@ -383,9 +389,9 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, status, payload):
         self._send(status, json.dumps(payload), "application/json")
 
-    def _read_json(self):
+    def _read_json(self, limit=8000):
         length = int(self.headers.get("Content-Length") or "0")
-        if length > 8000:
+        if length > limit:
             raise ValueError("Request is too large.")
         raw = self.rfile.read(length) if length else b"{}"
         data = json.loads(raw.decode() or "{}")
@@ -410,6 +416,7 @@ class Handler(BaseHTTPRequestHandler):
                 "mode": "dev-fixture" if DEV_FIXTURE else "workshop",
                 "archive": ARCHIVE.configured,
                 "wandb": WANDB.configured,
+                "cosmos": COSMOS.configured,
                 "model": WANDB.model,
                 "default_camera": DEFAULT_CAMERA,
             })
@@ -440,11 +447,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         try:
-            body = self._read_json()
+            body = self._read_json(900_000 if parsed.path == "/api/lane" else 8000)
         except (ValueError, json.JSONDecodeError):
             self._json(400, {"error": "Send a short JSON request."})
             return
-        if parsed.path == "/api/compile":
+        if parsed.path == "/api/lane":
+            image = body.get("image")
+            if not isinstance(image, str) or not image.startswith("data:image/jpeg;base64,"):
+                self._json(400, {"error": "Send one JPEG frame of the camera."})
+                return
+            self._guard(lambda: self._lane(image))
+        elif parsed.path == "/api/compile":
             text = " ".join(str(body.get("text") or "").split())
             if not text or len(text) > 400:
                 self._json(400, {"error": "Describe what to watch in one or two sentences (up to 400 characters)."})
@@ -474,6 +487,17 @@ class Handler(BaseHTTPRequestHandler):
             record(service, "chat/completions", started, False, str(exc))
             raise
         record(service, "chat/completions", started, True, result["model"])
+        self._json(200, result)
+
+    def _lane(self, image):
+        started = time.perf_counter()
+        service = "Dev fixture" if DEV_FIXTURE else "Cosmos Reason"
+        try:
+            result = COSMOS.propose(image)
+        except RuntimeError as exc:
+            record(service, "lane proposal", started, False, str(exc))
+            raise
+        record(service, "lane proposal", started, True, result["model"])
         self._json(200, result)
 
     def _guard(self, action):

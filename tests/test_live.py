@@ -5,6 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "live"))
 import compiler  # noqa: E402
+import lane  # noqa: E402
 import main  # noqa: E402
 
 CATALOG = compiler.load_catalog()
@@ -72,6 +73,19 @@ class FeedTests(unittest.TestCase):
         self.assertTrue(main.safe_source("s3://vss-chunks-segments/segments/a.mp4", ""))
         self.assertFalse(main.safe_source("s3://vss-chunks-segments/../x.mp4", ""))
         self.assertFalse(main.safe_source("https://evil.example/a.mp4", ""))
+
+
+class LaneTests(unittest.TestCase):
+    def test_parses_reasoning_output_and_thousand_scale(self):
+        pts, reason = lane.parse_lane('<think>x</think> {"found": true, "polygon": [[400,500],[900,500],[950,950],[350,950]], "reason": "aisle"}')
+        self.assertEqual(pts[0], [0.4, 0.5])
+        self.assertEqual(reason, "aisle")
+
+    def test_rejects_missing_tiny_full_frame_and_not_found(self):
+        for bad in ("no json", '{"found": false}', '{"polygon": [[0,0],[1,0]]}',
+                    '{"polygon": [[0,0],[1,0],[1,1],[0,1]]}', '{"polygon": [[0.1,0.1],[0.11,0.1],[0.11,0.11]]}'):
+            with self.assertRaises(ValueError):
+                lane.parse_lane(bad)
 
 
 if __name__ == "__main__":

@@ -42,6 +42,14 @@
     <div class="wall" id="wall"></div>
 
     <div class="stage-wrap">
+      <div class="stage-bar">
+        <div class="views" role="group" aria-label="Compare before and after your rules">
+          <button type="button" id="viewBefore" data-view="before" aria-pressed="true">Before <span id="beforeCount">2</span></button>
+          <button type="button" id="viewCompare" data-view="compare" aria-pressed="false" disabled>Compare</button>
+          <button type="button" id="viewAfter" data-view="after" aria-pressed="false" disabled>After <span id="afterCount">2</span></button>
+        </div>
+        <span class="view-note" id="viewNote">Before: people and scene captions only. Attach a rule to compare.</span>
+      </div>
       <div class="stage" id="stage">
         <video id="videoA" playsinline muted preload="auto"></video>
         <video id="videoB" playsinline muted preload="auto" hidden></video>
@@ -60,8 +68,8 @@
         <p class="caption" id="caption" hidden><span class="caption-src">Cosmos Reason</span><span id="captionText"></span></p>
         <div class="stage-empty" id="stageEmpty"><strong id="emptyTitle">Loading the archive…</strong><span id="emptyText"></span></div>
         <div class="draw-hint" id="drawHint" hidden>
-          <strong>Draw the restricted lane</strong>
-          <span>Click the corners on the floor. Press Enter or click the first point to finish.</span>
+          <strong>Adjust the lane</strong>
+          <span>Click the lane corners on the floor, then press Enter.</span>
           <div><button type="button" id="drawCancel" class="ghost">Cancel</button><button type="button" id="drawUndo" class="ghost">Undo point</button></div>
         </div>
       </div>
@@ -73,7 +81,7 @@
           <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Replay position">
           <div class="lane-rows" id="laneRows"></div>
         </div>
-        <button class="chip-btn" id="laneButton" type="button" hidden>Redraw lane</button>
+        <button class="chip-btn" id="laneButton" type="button" hidden>Adjust lane</button>
       </div>
     </div>
 
@@ -99,12 +107,17 @@
         <button class="send" id="sendButton" type="submit">Find modules</button>
       </div>
     </form>
-    <div class="examples" id="examples">
-      <button type="button" data-prompt="Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift.">Forklift lane and proximity</button>
-      <button type="button" data-prompt="Flag anyone who stands still in one spot for 3 seconds.">Lingering for 3 s</button>
-      <button type="button" data-prompt="Alert me when workers are not wearing hard hats.">Hard hats</button>
-    </div>
     <div class="thread" id="thread" aria-live="polite"></div>
+    <div class="examples" id="examples">
+      <span class="examples-head">Try a requirement · click to fill</span>
+      <button type="button" data-prompt="Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift.">Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift.</button>
+      <button type="button" data-prompt="Tell me when a person stays inside the forklift lane for 2 seconds.">Tell me when a person stays inside the forklift lane for 2 seconds.</button>
+      <button type="button" data-prompt="Show me every moment where someone is close to a forklift.">Show me every moment where someone is close to a forklift.</button>
+      <button type="button" data-prompt="Flag anyone who stands still in one spot for 3 seconds.">Flag anyone who stands still in one spot for 3 seconds.</button>
+      <button type="button" data-prompt="Alert me if more than 2 people are in view for over a second.">Alert me if more than 2 people are in view for over a second.</button>
+      <button type="button" data-prompt="Watch the forklift lane, flag anyone lingering for 3 seconds, and warn me when the area gets crowded.">Watch the forklift lane, flag anyone lingering for 3 seconds, and warn me when the area gets crowded.</button>
+      <button type="button" data-prompt="Alert me when workers are not wearing hard hats.">Alert me when workers are not wearing hard hats.</button>
+    </div>
     <div class="library">
       <h3>Module library</h3>
       <ul id="library"></ul>
@@ -117,7 +130,7 @@
   <h2>About the data</h2>
   <p><strong>Footage.</strong> Indexed clips from the team's VAST archive. The warehouse and facility feeds are rendered (synthetic) scenes from the event corpus. Replay plays recorded segments; it is not a live camera.</p>
   <p><strong>Always running.</strong> People: YOLO11 boxes recorded at ingest for every frame. Scene captions: the description Cosmos Reason wrote for each 5-second segment.</p>
-  <p><strong>Your rules.</strong> W&amp;B Inference maps your words to modules in the library; the server rejects anything outside it. Lane, lingering, and crowding rules are computed in your browser from the real person boxes. "Near a forklift" is a VAST hybrid search over captions. Its score ranks relevance; it is not a safety confidence.</p>
+  <p><strong>Your rules.</strong> W&amp;B Inference maps your words to modules in the library; the server rejects anything outside it. Cosmos Reason proposes the forklift lane from a camera frame. Lane, lingering, and crowding rules are then computed in your browser from the real person boxes. "Near a forklift" is a VAST hybrid search over captions. Its score ranks relevance; it is not a safety confidence.</p>
   <p><strong>Limits.</strong> The detector does not box forklifts, so forklift rules rely on captions. Positions are in image space, not calibrated metres. Flagged moments are for human review, not compliance findings.</p>
 </dialog>
 

@@ -99,7 +99,16 @@ class FixtureCompiler:
                 "model": self.model, "ms": 0, "tokens": None}
 
 
+class FixtureLane:
+    configured = True
+
+    def propose(self, image):
+        return {"polygon": [[0.45, 0.55], [0.95, 0.55], [0.95, 0.85], [0.45, 0.85]], "reason": "fixture lane",
+                "model": "dev-fixture/lane-stub", "ms": 0}
+
+
 main.ARCHIVE = FixtureArchive()
+main.COSMOS = FixtureLane()
 main.WANDB = FixtureCompiler()
 main.DEV_FIXTURE = True
 
