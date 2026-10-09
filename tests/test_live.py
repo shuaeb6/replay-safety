@@ -41,6 +41,48 @@ class ValidateTests(unittest.TestCase):
             compiler.validate(["zone_entry"], CATALOG)
 
 
+class RulesetTests(unittest.TestCase):
+    def test_every_footage_set_has_a_named_ruleset_with_rules(self):
+        packs = CATALOG["rulesets"]
+        for spec in main.SETS:
+            pack = packs[spec["id"]]
+            self.assertTrue(pack["name"].strip(), spec["id"])
+            self.assertTrue(pack["rules"], spec["id"])
+
+    def test_expand_rule_fills_catalog_module_fields(self):
+        rule = main.expand_rule({"id": "near_forklift", "params": {"min_score": 0.5},
+                                 "clause": "29 CFR 1910.178(m)(2)", "violation": "Person next to a forklift."}, CATALOG)
+        self.assertEqual(rule["kind"], "retrieval")
+        self.assertEqual(rule["query"], "a person standing or walking close to a forklift")
+        self.assertEqual(rule["params"]["min_score"], 0.5)
+        self.assertEqual(rule["clause"], "29 CFR 1910.178(m)(2)")
+
+    def test_expand_rule_keeps_caption_search_without_a_catalog_module(self):
+        rule = main.expand_rule({
+            "id": "blocked_path", "name": "Blocked path", "kind": "retrieval",
+            "query": "boxes blocking an exit", "color": "#C98A1C",
+            "clause": "29 CFR 1910.37(a)(3)", "violation": "Material blocks an exit.",
+        }, CATALOG)
+        self.assertEqual(rule["kind"], "retrieval")
+        self.assertEqual(rule["query"], "boxes blocking an exit")
+
+    def test_resolve_search_uses_catalog_module_query(self):
+        query, score = main.resolve_search({"module": "near_forklift", "params": {"min_score": 0.45}}, CATALOG)
+        self.assertEqual(query, "a person standing or walking close to a forklift")
+        self.assertEqual(score, 0.45)
+
+    def test_resolve_search_accepts_a_short_caption_query(self):
+        query, score = main.resolve_search({"query": "boxes blocking an aisle or exit"}, CATALOG)
+        self.assertIn("boxes", query)
+        self.assertEqual(score, 0.35)
+
+    def test_resolve_search_rejects_empty_or_huge_queries(self):
+        with self.assertRaises(ValueError):
+            main.resolve_search({"query": "no"}, CATALOG)
+        with self.assertRaises(ValueError):
+            main.resolve_search({"query": "x" * 201}, CATALOG)
+
+
 class SetTests(unittest.TestCase):
     def test_known_warehouse_cameras_are_industrial(self):
         self.assertEqual(main.camera_set("sdg_warehouse_cam-2"), "industrial")

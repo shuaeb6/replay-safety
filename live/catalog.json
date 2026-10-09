@@ -50,6 +50,36 @@
    }
   }
  ],
+ "rulesets": {
+  "industrial": {
+   "name": "Warehouse safety",
+   "summary": "Watch this camera for a person in the forklift lane, a person next to a forklift, or a person who stays still.",
+   "rules": [
+    {"id": "zone_entry", "params": {"dwell_seconds": 1}, "clause": "Site forklift-lane policy", "violation": "A person is inside the forklift lane."},
+    {"id": "near_forklift", "params": {"min_score": 0.4}, "clause": "29 CFR 1910.178(m)(2)", "violation": "A person stands or walks next to a forklift."},
+    {"id": "lingering", "params": {"dwell_seconds": 3}, "clause": "Site dwell policy", "violation": "A person stayed in one place too long."}
+   ]
+  },
+  "hackathon": {
+   "name": "Hackathon violations",
+   "summary": "Watch this camera for the team rules: person next to a vehicle, blocked path, lingering, and crowding.",
+   "rules": [
+    {"id": "near_vehicle", "name": "Person near a vehicle", "kind": "retrieval", "color": "#FF6B5B", "query": "a person standing or walking close to a vehicle, car, truck, or forklift", "params": {"min_score": 0.35}, "clause": "Site vehicle-distance policy", "violation": "A person is close to a vehicle."},
+    {"id": "blocked_path", "name": "Blocked path", "kind": "retrieval", "color": "#C98A1C", "query": "boxes, pallets, or equipment blocking a walkway, aisle, door, or exit", "params": {"min_score": 0.35}, "clause": "29 CFR 1910.37(a)(3)", "violation": "Material blocks a walkway or exit."},
+    {"id": "lingering", "params": {"dwell_seconds": 3}, "clause": "Site dwell policy", "violation": "A person stayed in one place too long."},
+    {"id": "crowding", "params": {"max_people": 2, "min_seconds": 1}, "clause": "Site occupancy policy", "violation": "More people are in view than the limit."}
+   ]
+  },
+  "streets": {
+   "name": "Street safety",
+   "summary": "Watch this camera for a person next to a vehicle, lingering, or crowding.",
+   "rules": [
+    {"id": "near_vehicle", "name": "Person near a vehicle", "kind": "retrieval", "color": "#FF6B5B", "query": "a person standing or walking close to a vehicle or car", "params": {"min_score": 0.35}, "clause": "Site vehicle-distance policy", "violation": "A person is close to a vehicle."},
+    {"id": "lingering", "params": {"dwell_seconds": 3}, "clause": "Site dwell policy", "violation": "A person stayed in one place too long."},
+    {"id": "crowding", "params": {"max_people": 2, "min_seconds": 1}, "clause": "Site occupancy policy", "violation": "More people are in view than the limit."}
+   ]
+  }
+ },
  "sets": {
   "industrial": [
    "Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift.",

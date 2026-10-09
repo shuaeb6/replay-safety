@@ -92,6 +92,45 @@ def camera_set(camera_id):
     return "hackathon"
 
 
+def expand_rule(rule, catalog):
+    """Fill a ruleset row from the catalog module of the same id, when one exists."""
+    base = next((m for m in catalog["modules"] if m["id"] == rule["id"]), {})
+    params = {key: spec["default"] for key, spec in (base.get("params") or {}).items()}
+    params.update(rule.get("params") or {})
+    out = {
+        "id": rule["id"],
+        "name": rule.get("name") or base.get("name") or rule["id"],
+        "kind": rule.get("kind") or base.get("kind"),
+        "color": rule.get("color") or base.get("color") or "#FF6B5B",
+        "query": rule.get("query") or base.get("query") or "",
+        "params": params,
+        "clause": rule.get("clause") or "",
+        "violation": rule.get("violation") or base.get("summary") or "",
+        "evidence": base.get("evidence") or "VAST hybrid search over Cosmos captions.",
+    }
+    if not out["kind"]:
+        raise ValueError(f"Rule {rule['id']} has no kind.")
+    return out
+
+
+def resolve_search(body, catalog):
+    """Return (query, min_score) for an archive caption search."""
+    module = next((m for m in catalog["modules"] if m["id"] == body.get("module")), None)
+    if module and module.get("kind") == "retrieval":
+        spec = module["params"]["min_score"]
+        score = (body.get("params") or {}).get("min_score", spec["default"])
+        if isinstance(score, bool) or not isinstance(score, (int, float)) or not spec["min"] <= score <= spec["max"]:
+            raise ValueError(f"Minimum match score must be between {spec['min']} and {spec['max']}.")
+        return module["query"], float(score)
+    query = " ".join(str(body.get("query") or "").split())
+    if not 8 <= len(query) <= 200:
+        raise ValueError("Send a catalog retrieval module, or a search phrase of 8 to 200 characters.")
+    score = (body.get("params") or {}).get("min_score", 0.35)
+    if isinstance(score, bool) or not isinstance(score, (int, float)) or not 0.2 <= score <= 0.9:
+        raise ValueError("Minimum match score must be between 0.2 and 0.9.")
+    return query, float(score)
+
+
 def build_sets(cameras):
     by_id = {spec["id"]: [] for spec in SETS}
     for camera in cameras:
@@ -498,17 +537,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._guard(lambda: self._compile(text))
         elif parsed.path == "/api/evidence":
-            module = next((m for m in CATALOG["modules"] if m["id"] == body.get("module")), None)
             camera_id = str(body.get("camera_id") or DEFAULT_CAMERA)
-            if not module or module["kind"] != "retrieval":
-                self._json(400, {"error": "That module does not search the archive."})
+            try:
+                query, score = resolve_search(body, CATALOG)
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
                 return
-            score = (body.get("params") or {}).get("min_score", module["params"]["min_score"]["default"])
-            spec = module["params"]["min_score"]
-            if isinstance(score, bool) or not isinstance(score, (int, float)) or not spec["min"] <= score <= spec["max"]:
-                self._json(400, {"error": f"Minimum match score must be between {spec['min']} and {spec['max']}."})
-                return
-            self._guard(lambda: self._json(200, ARCHIVE.evidence(module, {"min_score": score}, camera_id)))
+            self._guard(lambda: self._json(200, ARCHIVE.evidence({"query": query}, {"min_score": score}, camera_id)))
         else:
             self._json(404, {"error": "Not found."})
 

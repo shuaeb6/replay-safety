@@ -105,8 +105,10 @@
   <aside class="panel" aria-label="Rule assistant">
     <div class="panel-head">
       <h1>What should Replay watch?</h1>
-      <p>Describe the rule in your own words. Replay picks modules from your library and checks them against the archive.</p>
+      <p>Click the ruleset for this set of cameras. Replay searches the archive and lists each violation here, with the segment and a short description. You can also type a rule.</p>
     </div>
+    <div id="rulesets"></div>
+    <div class="findings" id="findings" aria-live="polite"></div>
     <form id="ruleForm" class="composer">
       <label class="sr" for="requirement">Safety requirement</label>
       <textarea id="requirement" rows="3" maxlength="400" placeholder="Warn me when someone walks into the forklift lane for more than a second, or stands near a forklift."></textarea>
