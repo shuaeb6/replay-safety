@@ -38,9 +38,29 @@ class FixtureArchive:
             {"id": "smartspace_cam-1", "name": "Indoor floor", "place": "Facility · synthetic",
              "tone": "warehouse", "synthetic": True, "segments": 0},
         ]
-        return {"cameras": cameras, "indexed_clips": 6, "sets": main.build_sets(cameras)}
+        cameras.append({"id": "office_cam-1", "name": "Office", "place": "Hackathon office",
+                         "tone": "office", "synthetic": False, "segments": 2})
+        return {"cameras": cameras, "indexed_clips": 8, "sets": main.build_sets(cameras)}
+
+    def _office_feeds(self, camera_id):
+        clips = [
+            ("restroom-entry.mp4", "Restroom entry", ["people sitting at desks", "a man entering the women's bathroom"]),
+            ("fire-alarm.mp4", "Fire alarm", ["", ""]),
+        ]
+        feeds = []
+        for filename, title, captions in clips:
+            segs = []
+            for n, caption in enumerate(captions, start=1):
+                segs.append({"n": n, "start": (n - 1) * 5.0, "end": n * 5.0, "source": fake_source("0_te21", n),
+                             "caption": caption, "objects": ""})
+            feeds.append({"id": f"dev:{filename}", "name": title, "subtitle": "Office", "camera_id": camera_id,
+                          "location": "office", "synthetic": False, "duration": 10.0, "segments": segs,
+                          "filename": filename})
+        return {"camera_id": camera_id, "feeds": feeds, "available": len(feeds)}
 
     def feeds(self, camera_id, limit=6):
+        if camera_id == "office_cam-1":
+            return self._office_feeds(camera_id)
         feeds = []
         for i, name in enumerate(CLIPS):
             if not (FOOTAGE / f"{name}.mp4").exists():

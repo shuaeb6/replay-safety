@@ -159,6 +159,9 @@ h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
 .lane-track b { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: var(--c); }
 .lane-track b.soft { opacity: .35; }
 .lane-track button { position: absolute; top: 0; bottom: 0; border: 0; padding: 0; border-radius: 3px; background: var(--c); min-width: 4px; }
+.lane.violation .lane-name { color: #ffb4ab; font-weight: 700; }
+.lane.violation .lane-track { height: 16px; background: rgba(255, 107, 91, .16); }
+.lane.violation .lane-track button { background: var(--alert); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35); }
 .lane-track .head { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--stage-ink); }
 .chip-btn { background: transparent; border: 1px solid rgba(255, 181, 71, .6); color: #ffb547; border-radius: 8px; padding: 7px 11px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 
@@ -191,13 +194,19 @@ h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
 .pack-run[aria-pressed="true"] { background: var(--ok); }
 .pack-rules { display: grid; gap: 6px; }
 .pack-rules button { text-align: left; border: 1px solid var(--line); background: var(--card); border-radius: 9px; padding: 8px 10px; font-size: 12.5px; line-height: 1.35; }
+.pack-rules .rule-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .pack-rules button strong { display: block; font: 700 13px var(--display); }
 .pack-rules button small { color: var(--muted); }
+.pack-rules button em, .finding em { font: 700 10px var(--mono); font-style: normal; letter-spacing: .06em; text-transform: uppercase; color: #fff; background: var(--alert); border-radius: 4px; padding: 1px 6px; }
+.pack-rules button.violation { border-left: 4px solid var(--alert); background: color-mix(in srgb, var(--alert) 8%, var(--card)); }
 .pack-rules button.on { border-color: var(--forest); background: var(--forest-soft); }
+.pack-rules button.violation.on { border-color: var(--alert); background: color-mix(in srgb, var(--alert) 16%, var(--card)); }
+.finding.violation { border-left-color: var(--alert); background: color-mix(in srgb, var(--alert) 8%, var(--card)); }
 .findings h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); display: flex; gap: 8px; align-items: baseline; }
 .findings h3 .count { font: 700 13px var(--mono); color: var(--alert); }
 .finding { display: grid; gap: 4px; width: 100%; text-align: left; border: 1px solid var(--line); border-radius: 11px; padding: 10px 12px; background: var(--card); border-left: 4px solid var(--c, var(--alert)); }
 .finding strong { font: 700 13.5px var(--display); }
+.finding .rule-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .finding .meta { font-size: 12px; color: var(--muted); }
 .finding .why { font-size: 13px; line-height: 1.4; color: var(--ink); }
 .composer { border: 1px solid var(--line); border-radius: 13px; background: var(--paper); padding: 4px; transition: border-color .2s; }

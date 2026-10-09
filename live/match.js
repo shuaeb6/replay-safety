@@ -33,10 +33,14 @@ function haystack(rule) {
 }
 
 function feedHitsRule(feed, rule) {
-  const hay = new Set(tokens(`${feed.name || ''} ${feed.filename || ''} ${feed.subtitle || ''}`));
-  const needles = tokens(rule.name).filter((word) => !GENERIC.has(word));
-  const need = needles.length ? needles : tokens(rule.name);
-  return need.every((word) => hay.has(word));
+  // The clip name can stay short ("Restroom entry") while the rule states the violation
+  // ("Women's bathroom"). Match when the clip's own words are covered by the rule.
+  // Ignore the camera subtitle; "Office" is shared by every clip in the set.
+  const filename = String(feed.filename || '').replace(/\.[a-z0-9]+$/i, '');
+  const needles = tokens(`${feed.name || ''} ${filename}`).filter((word) => !GENERIC.has(word));
+  if (!needles.length) return false;
+  const hay = new Set(tokens(rule.name));
+  return needles.every((word) => hay.has(word));
 }
 
 export function matchFeeds(query, feeds, rules) {
@@ -50,4 +54,38 @@ export function matchFeeds(query, feeds, rules) {
   const top = Math.max(...scored.map((row) => row.score));
   const winners = scored.filter((row) => row.score === top).map((row) => row.rule);
   return {rules: winners, feeds: feeds.filter((feed) => winners.some((rule) => feedHitsRule(feed, rule)))};
+}
+
+function segmentMatchesRule(seg, rule) {
+  const hay = new Set(tokens(seg?.caption || ''));
+  if (!hay.size) return false;
+  const needles = tokens([rule.name, ...(rule.terms || [])].join(' ')).filter((word) => !GENERIC.has(word));
+  return needles.some((word) => hay.has(word));
+}
+
+function mergeRanges(ranges) {
+  const sorted = ranges
+    .map((range) => ({start: Number(range.start) || 0, end: Number(range.end) || 0}))
+    .filter((range) => range.end > range.start)
+    .sort((a, b) => a.start - b.start);
+  const out = [];
+  for (const range of sorted) {
+    const prev = out.at(-1);
+    if (prev && range.start <= prev.end + 0.05) prev.end = Math.max(prev.end, range.end);
+    else out.push({start: range.start, end: range.end});
+  }
+  return out;
+}
+
+// Time ranges where this clip breaks a rule. A caption that names the rule
+// narrows the bar to those segments. Otherwise the whole clip is the violation.
+export function violationSpans(feed, rules) {
+  if (!feed) return [];
+  const segments = Array.isArray(feed.segments) ? feed.segments : [];
+  const duration = Number(feed.duration) || Number(segments.at(-1)?.end) || 0;
+  return (rules || []).filter((rule) => feedHitsRule(feed, rule)).map((rule) => {
+    const hits = segments.filter((seg) => segmentMatchesRule(seg, rule));
+    const ranges = hits.length ? mergeRanges(hits) : (duration > 0 ? [{start: 0, end: duration}] : []);
+    return {id: rule.id, name: rule.name, violation: rule.violation || '', ranges, whole: !hits.length};
+  }).filter((row) => row.ranges.length);
 }

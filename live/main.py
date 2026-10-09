@@ -148,6 +148,7 @@ STATIC = {
     "/style.css": ("style.css", "text/css"),
     "/app.js": ("app.js", "text/javascript"),
     "/engine.js": ("engine.js", "text/javascript"),
+    "/match.js": ("match.js", "text/javascript"),
     "/catalog.json": ("catalog.json", "application/json"),
 }
 

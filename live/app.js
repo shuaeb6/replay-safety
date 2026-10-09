@@ -1,5 +1,5 @@
 import {normaliseDetections, boxesAt, track, computeEvents, activeEvents, trackBoxAt} from './engine.js';
-import {matchFeeds} from './match.js';
+import {matchFeeds, violationSpans} from './match.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
@@ -36,6 +36,8 @@ const S = {
   events: new Map(),
   retrieval: new Map(),
   thumbs: new Map(),
+  focusRuleIds: new Set(),
+  violationSpans: [],
   wipe: 1, wipeOn: false, view: 'before',
   drawing: null,
   lastT: 0,
@@ -270,7 +272,11 @@ async function loadCaption(seg) {
   try {
     const row = await api(`api/segment?source=${encodeURIComponent(seg.source)}`);
     S.captions.set(seg.source, row.caption || '');
-    if (row.caption) S.captionsSeen = true;
+    if (row.caption) {
+      seg.caption = row.caption;
+      S.captionsSeen = true;
+      renderLanes();
+    }
   } catch { /* caption is optional */ }
 }
 
@@ -300,9 +306,21 @@ function detach(id) {
 
 /* ---------------- lanes + moments ---------------- */
 
+function rulesInPlay() {
+  const packRules = (packFor(S.set)?.rules || []).map(ruleSpec);
+  if (!S.focusRuleIds.size) return packRules;
+  return packRules.filter((rule) => S.focusRuleIds.has(rule.id));
+}
+
+function spansFor(feed) {
+  if (!feed) return [];
+  const segments = (feed.segments || []).map((seg) => ({...seg, caption: seg.caption || S.captions.get(seg.source) || ''}));
+  return violationSpans({...feed, segments}, rulesInPlay());
+}
+
 function renderLanes() {
   const feed = S.feed;
-  if (!feed) { $('laneRows').innerHTML = ''; return; }
+  if (!feed) { S.violationSpans = []; $('laneRows').innerHTML = ''; renderFindings(); return; }
   const D = feed.duration || 1;
   const pct = (t) => `${Math.max(0, Math.min(100, (t / D) * 100))}%`;
   const frames = S.det.get(feed.id) || [];
@@ -329,8 +347,17 @@ function renderLanes() {
     }
     rows.push(`<div class="lane" style="--c:${m.color}"><span class="lane-name"><i></i>${esc(m.name)}</span><span class="lane-track">${marks}</span></div>`);
   }
+  S.violationSpans = spansFor(feed);
+  for (const span of S.violationSpans) {
+    const marks = span.ranges.map((range) => {
+      const title = `Violation · ${span.name} · ${fmt(range.start)}–${fmt(range.end)}`;
+      return `<button type="button" class="violation" data-seek="${range.start}" title="${esc(title)}" style="left:${pct(range.start)};width:${pct(Math.max(range.end - range.start, 0.05))}"></button>`;
+    }).join('');
+    rows.push(`<div class="lane violation" style="--c:var(--alert)"><span class="lane-name"><i></i>Violation</span><span class="lane-track">${marks}</span></div>`);
+  }
   $('laneRows').innerHTML = rows.join('');
   $('laneRows').querySelectorAll('[data-seek]').forEach((b) => { b.onclick = () => seekFeed(Number(b.dataset.seek)); });
+  renderFindings();
 }
 
 function allMoments() {
@@ -394,14 +421,28 @@ function openMoment(m) {
 function renderFindings() {
   const box = $('findings');
   if (!box) return;
+  const spans = S.violationSpans || [];
+  const fromClip = spans.flatMap((span) => span.ranges.map((range) => ({span, range})));
   const list = allMoments();
-  if (!list.length) {
+  if (!list.length && !fromClip.length) {
     box.innerHTML = S.attached.length
       ? '<p class="sub">No violation on this camera yet. Play other feeds, or wait for the archive search.</p>'
       : '';
     return;
   }
-  box.innerHTML = `<h3>Violations <span class="count">${list.length}</span></h3>`
+  const clipRows = fromClip.map((row, i) => `<button class="finding violation" type="button" data-span="${i}">
+        <span class="rule-top"><strong>${esc(row.span.name)}</strong><em>Violation</em></span>
+        <span class="meta">${fmt(row.range.start)}–${fmt(row.range.end)}${row.span.whole ? ' · whole clip' : ''}</span>
+        <span class="why">${esc(row.span.violation || '')}</span>
+      </button>`).join('');
+  if (!list.length) {
+    box.innerHTML = `<h3>Violations <span class="count">${fromClip.length}</span></h3>${clipRows}`;
+    box.querySelectorAll('[data-span]').forEach((b) => {
+      b.onclick = () => seekFeed(fromClip[Number(b.dataset.span)].range.start);
+    });
+    return;
+  }
+  box.innerHTML = `<h3>Violations <span class="count">${list.length + fromClip.length}</span></h3>${clipRows}`
     + list.map((m, i) => `<button class="finding" type="button" data-finding="${i}" style="--c:${m.module.color}">
         <strong>${esc(m.module.name)}</strong>
         <span class="meta">${esc(m.clause || 'Indexed match')} · ${esc(m.feed.name)} · ${fmt(m.at)}</span>
@@ -409,6 +450,9 @@ function renderFindings() {
       </button>`).join('');
   box.querySelectorAll('[data-finding]').forEach((b) => {
     b.onclick = () => openMoment(list[Number(b.dataset.finding)]);
+  });
+  box.querySelectorAll('[data-span]').forEach((b) => {
+    b.onclick = () => seekFeed(fromClip[Number(b.dataset.span)].range.start);
   });
 }
 
@@ -423,7 +467,8 @@ function renderRulesets() {
       <button class="pack-run" type="button" id="runPack">Show all clips</button>
       <div class="pack-rules">${pack.rules.map((raw) => {
         const r = ruleSpec(raw);
-        return `<button type="button" data-rule="${esc(r.id)}" class="${attached.has(r.id) ? 'on' : ''}"><strong>${esc(r.name)}</strong><small>${esc(r.clause || r.violation)}</small></button>`;
+        const on = attached.has(r.id) || S.focusRuleIds.has(r.id);
+        return `<button type="button" data-rule="${esc(r.id)}" class="violation${on ? ' on' : ''}"><span class="rule-top"><strong>${esc(r.name)}</strong><em>Violation</em></span><small>${esc(r.violation || r.clause)}</small></button>`;
       }).join('')}</div>
     </div>`;
   $('runPack').onclick = () => showAllClips();
@@ -592,7 +637,16 @@ function render(now = 0) {
   // Toast: the newest active rule on the After side.
   const current = events.at(-1);
   const toast = $('toast');
-  if (current || retrievalHit) {
+  const violationHit = (S.violationSpans || []).map((span) => {
+    const range = span.ranges.find((item) => t >= item.start && t <= item.end + 0.05);
+    return range ? {span, range} : null;
+  }).find(Boolean);
+  if (violationHit) {
+    toast.style.setProperty('--c', 'var(--alert)');
+    $('toastTitle').textContent = 'Violation';
+    $('toastMeta').textContent = `${violationHit.span.violation || violationHit.span.name} · ${fmt(violationHit.range.start)}–${fmt(violationHit.range.end)}`;
+    toast.hidden = false;
+  } else if (current || retrievalHit) {
     const m = moduleSpec(current ? current.module : retrievalHit.id);
     toast.style.setProperty('--c', m.color);
     $('toastTitle').textContent = m.name;
@@ -787,11 +841,13 @@ function stepHtml(state, text, note = '') {
 }
 
 function showAllClips() {
+  S.focusRuleIds = new Set();
   S.feeds = S.allFeeds || S.feeds;
   $('requirement').value = '';
   $('charCount').textContent = '0 / 400';
   $('thread').innerHTML = '';
   $('wallNote').textContent = `${S.feeds.length} clips in this set`;
+  renderRulesets();
   renderWall();
   if (S.feeds[0]) selectFeed(S.feeds[0]);
 }
@@ -801,6 +857,7 @@ async function applyClipFilter(query) {
   if (!text) { showAllClips(); return; }
   const rules = (packFor(S.set)?.rules || []).map(ruleSpec);
   const found = matchFeeds(text, S.allFeeds || [], rules);
+  S.focusRuleIds = new Set(found.rules.map((rule) => rule.id));
   S.feeds = found.feeds;
   const names = found.rules.map((rule) => rule.name).join(', ');
   $('thread').innerHTML = `<div class="bubble">${esc(text)}</div><div class="reply">${S.feeds.length
@@ -809,6 +866,7 @@ async function applyClipFilter(query) {
   $('wallNote').textContent = S.feeds.length
     ? `Showing ${S.feeds.length} of ${(S.allFeeds || []).length} clips · ${names}`
     : 'No clip in this set matches that violation.';
+  renderRulesets();
   renderWall();
   if (S.feeds[0]) await selectFeed(S.feeds[0]);
 }
@@ -910,6 +968,8 @@ async function loadCamera(cameraId) {
   S.tracks.clear();
   S.events.clear();
   S.retrieval.clear();
+  S.focusRuleIds = new Set();
+  renderRulesets();
   $('wall').innerHTML = '<div class="tile skeleton"></div>'.repeat(4);
   $('emptyTitle').textContent = 'Loading the archive…';
   $('emptyText').textContent = '';

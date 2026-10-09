@@ -19,7 +19,7 @@ APP=replay-safety
 
 echo "Deploying ${APP} in ${NS}"
 
-files=(main.py compiler.py lane.py index.html style.css app.js engine.js catalog.json)
+files=(main.py compiler.py lane.py index.html style.css app.js engine.js match.js catalog.json)
 args=()
 for name in "${files[@]}"; do
   path="${ROOT}/live/${name}"
