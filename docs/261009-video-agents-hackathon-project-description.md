@@ -36,6 +36,8 @@ For each violation, the app shows:
 | cGMP | 21 CFR 211 | Personnel and gowning (211.28) |
 
 For the full list of clauses, see the [regulations table](regulations-table.md).
+Each clause has a setting: general industry, chem lab, pharma, warehouse, or construction.
+For one setting, see [regulations by setting](regulations-by-setting.md).
 
 ## 5. How it works
 
