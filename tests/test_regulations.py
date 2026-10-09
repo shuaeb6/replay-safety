@@ -1,4 +1,4 @@
-"""Tests for docs/regulations.json and the table generated from it.
+"""Tests for data/regulations.json and the table generated from it.
 
 Run: uv run --with pytest pytest tests/test_regulations.py
 """
@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import build_regulations_table as build  # noqa: E402
 
-DATA_PATH = ROOT / "docs" / "regulations.json"
+DATA_PATH = ROOT / "data" / "regulations.json"
 DOC_PATH = ROOT / "docs" / "regulations-table.md"
 
 ROW_FIELDS = ("pack", "standard", "clause", "topic", "requirement", "cue")
