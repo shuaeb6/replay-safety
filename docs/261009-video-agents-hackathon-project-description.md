@@ -1,31 +1,33 @@
 # Video Compliance Agent
 
-OSHA, ISO, and cGMP violation detection with vision-language agents.
-VAST Builders Challenge: Video Agents, 2026-10-09.
+The app finds OSHA, ISO, and cGMP violations in video.
+Built for the VAST Builders Challenge: Video Agents, 2026-10-09.
 
 ## 1. Purpose
 
-This app finds safety and quality violations in video.
-It shows the evidence for each violation.
-It gives the applicable rule for each violation.
-It writes a draft corrective action for each violation.
+The app finds safety and quality violations in video.
+For each violation, the app shows:
+
+- the evidence
+- the rule that applies
+- a draft corrective action (CAPA)
 
 ## 2. Problem
 
-Inspectors cannot watch all camera video.
-Audits occur at long intervals.
-Violations between audits are not recorded.
-Manual review is slow and expensive.
+- Inspectors cannot watch all camera video.
+- Audits occur at long intervals.
+- Nobody records violations between audits.
+- Manual review is slow and expensive.
 
 ## 3. Solution
 
-The app reads video from site cameras.
-A vision-language model describes each video segment.
-An agent compares each description with a set of rules.
-The app shows each finding with a frame, a caption, and a clause.
-A person accepts or rejects each finding.
+1. The app reads video from site cameras.
+2. A vision-language model describes each video segment.
+3. An agent compares each description with the rules.
+4. The app shows each finding with a frame, a caption, and a clause.
+5. A person accepts or rejects each finding.
 
-## 4. Applicable standards
+## 4. Standards
 
 | Pack | Standard | Examples |
 |---|---|---|
@@ -38,28 +40,26 @@ A person accepts or rejects each finding.
 1. The user selects a rule pack.
 2. The app changes the rule pack into an ingestion prompt.
 3. The pipeline divides the video into segments.
-4. Cosmos Reason describes each segment. It uses the ingestion prompt.
+4. Cosmos Reason describes each segment with the ingestion prompt.
 5. Cosmos Embed makes a vector for each description.
 6. YOLO detects and tracks objects in each segment.
 7. The agent searches the index for each rule.
 8. The LLM compares each result with the clause text.
-9. The app records a finding when the evidence agrees with the rule.
+9. If the evidence agrees with the rule, the app records a finding.
 10. The user accepts or rejects the finding.
 11. The LLM writes a draft CAPA for each accepted finding.
 
-### Important
-
-The model records only the items that the ingestion prompt asks about.
-If the prompt does not ask about an item, you cannot search for that item.
-Thus, each rule must have a matching question in the prompt.
+**Note:** The model records only the items that the ingestion prompt asks about.
+The app cannot find an item that the prompt does not ask about.
+Each rule needs a matching question in the prompt.
 
 ## 6. User interface
 
 ### 6.1 Inspect view
 
-- Video player on the left. YOLO boxes show on the video.
-- Timeline under the video. Colored marks show findings by severity.
-- Findings list on the right. New findings appear at the top.
+- Video player (left). YOLO boxes show on the video.
+- Timeline (below the video). Colored marks show findings by severity.
+- Findings list (right). New findings show at the top.
 
 ### 6.2 Finding card
 
@@ -79,22 +79,21 @@ Thus, each rule must have a matching question in the prompt.
 ### 6.4 Site overview
 
 - Grid of cameras. Each camera has a status indicator.
-- Totals: open findings, findings by clause, time since last critical finding.
+- Totals: open findings, findings by clause, time since the last critical finding.
 
 ### 6.5 Report
 
-- Export of accepted findings with frames, clauses, and CAPA drafts.
-- Format is similar to an audit report or FDA Form 483.
+- The report has the accepted findings, with frames, clauses, and CAPA drafts.
+- The format is similar to an audit report or FDA Form 483.
 
 ## 7. Data
 
 The team records its own video.
-Each scene has two versions: one with a violation and one without a violation.
+Do not use video from the internet. The challenge rules do not allow it.
+
+Each scene has two versions: one with a violation and one without.
 The version without a violation is the negative control.
 Negative controls show that the detector does not give false findings.
-
-Do not use video from the internet.
-The challenge rules do not permit it.
 
 | Scene | Violation | Standard |
 |---|---|---|
@@ -132,11 +131,11 @@ The challenge rules do not permit it.
 - The app does not replace a qualified inspector.
 - A finding is a candidate. A person must accept it.
 - Detection quality depends on camera angle, light, and resolution.
-- Some violations are not visible. Examples: documents and training records.
+- The app cannot see some violations, for example documents and training records.
 
 ## 11. Next steps
 
 - Add more rule packs: ISO 9001, EU GMP Annex 1.
 - Connect findings to inventory and regulatory documents (cheminventory.co).
-- Collect accepted and rejected findings as training data.
-- Send alerts to the site manager for critical findings.
+- Save accepted and rejected findings as training data.
+- Send alerts for critical findings to the site manager.
