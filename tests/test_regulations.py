@@ -6,6 +6,8 @@ import csv
 import io
 import json
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -20,7 +22,7 @@ DATA_PATH = ROOT / "data" / "regulations.json"
 ALL_DOC_PATH = ROOT / "docs" / "regulations-table.md"
 SETTING_DOC_PATH = ROOT / "docs" / "regulations-by-setting.md"
 CSV_PATH = ROOT / "data" / "regulations.csv"
-RULES_JS_PATH = ROOT / "app" / "rules.js"
+CATALOG_JS_PATH = ROOT / "app" / "rules" / "catalog.js"
 
 ROW_FIELDS = ("pack", "standard", "clause", "topic", "requirement", "cue")
 PACKS = ("OSHA", "OSHA-CONST", "cGMP", "EPA", "ISO")
@@ -124,12 +126,18 @@ def test_chem_lab_has_lab_specific_rules():
 
 
 def app_module_ids():
-    text = RULES_JS_PATH.read_text()
-    block = text[text.index("export const modules") : text.index("};")]
-    return set(re.findall(r"^\s*(\w+):\s*\{name:", block, re.MULTILINE))
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    script = (
+        f"import({json.dumps(CATALOG_JS_PATH.as_uri())})"
+        ".then(m => console.log(JSON.stringify(Object.keys(m.modules))))"
+    )
+    out = subprocess.run([node, "-e", script], capture_output=True, text=True, check=True)
+    return set(json.loads(out.stdout))
 
 
-def test_module_registry_matches_app_rules_js():
+def test_module_registry_matches_app_catalog():
     assert set(load()["modules"]) == app_module_ids()
 
 
